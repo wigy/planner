@@ -25,8 +25,8 @@ export function Projects() {
   return (
     <div className="page">
       <h1>Projects</h1>
-      <p className="muted">
-        A project's hashtag in the title of a Bookkeeping event books that event to it, both ways: booking in planner adds the hashtag, and typing it in Google Calendar books the event.
+      <p className="lede">
+        Put a project's hashtag in an event's title or description, here or in Google Calendar on your phone, and the event moves to Bookkeeping and counts for that project. Take the hashtag out and it moves back.
       </p>
       {error && <p className="error">{error}</p>}
       {note && <p className="note">{note}</p>}
@@ -62,10 +62,10 @@ export function Projects() {
                     className="primary"
                     onClick={async () => {
                       const renaming = edit.hashtag.replace(/^#/, '').toLowerCase() !== p.hashtag
-                      if (renaming && !confirm(`Rename #${p.hashtag} to #${edit.hashtag.replace(/^#/, '')}? Every Bookkeeping event title carrying it is rewritten in Google (locked months are left alone).`)) return
+                      if (renaming && !confirm(`Rename #${p.hashtag} to #${edit.hashtag.replace(/^#/, '')}? Every event carrying it is rewritten in Google; locked months are left alone.`)) return
                       try {
                         const r = await api.patch<{ project: Project; rewritten: number; skipped: number }>(`/api/projects/${p.id}`, body(edit))
-                        setNote(renaming ? `Renamed: ${r.rewritten} event titles rewritten, ${r.skipped} in locked months left as they were.` : '')
+                        setNote(renaming ? `Renamed: ${r.rewritten} events rewritten, ${r.skipped} left as they were.` : '')
                         setEditing(null)
                         setError('')
                         load()
@@ -137,8 +137,8 @@ export function Projects() {
       </table>
       {unknown.length > 0 && (
         <>
-          <h2>Unknown hashtags in Bookkeeping</h2>
-          <p className="muted">These hashtags appear in Bookkeeping event titles but match no project, so those events are not booked.</p>
+          <h2>Hashtags without a project</h2>
+          <p className="muted">These appear in Bookkeeping events but match no project, so those hours are not counted yet.</p>
           <ul>
             {unknown.map((u) => (
               <li key={u.hashtag}>

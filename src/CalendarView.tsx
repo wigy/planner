@@ -92,6 +92,7 @@ export function CalendarView({ me }: { me: Me }) {
     <div className="calendar-page">
       <aside className="sidebar">
         <button
+          className="sync"
           disabled={busy}
           onClick={async () => {
             setBusy(true)
@@ -107,10 +108,10 @@ export function CalendarView({ me }: { me: Me }) {
         >
           {busy ? 'Syncing…' : 'Sync now'}
         </button>
-        {!hasAccount && <p className="muted">No Google account linked yet.</p>}
+        {!hasAccount && <p className="muted">Link a Google account in Settings to see your calendars here.</p>}
         {groupBy(calendars, (c) => c.account).map(([account, cals]) => (
           <div key={account} className="cal-group">
-            <div className="muted small">{account}</div>
+            <h2 className="side-head">{account}</h2>
             {cals.map((c) => (
               <label key={c.id} className="cal-item">
                 <input
@@ -121,24 +122,24 @@ export function CalendarView({ me }: { me: Me }) {
                     setCalendars((cs) => cs.map((x) => (x.id === c.id ? updated : x)))
                   }}
                 />
-                <span className="swatch" style={{ background: c.color }} />
-                <span>
-                  {c.name}
-                  {c.bookkeeping && <span className="pill small">Bookkeeping</span>}
-                </span>
+                <span className="cal-dot" style={{ background: c.color, borderColor: c.color }} />
+                <span className="cal-name">{c.name}</span>
+                {c.bookkeeping && <span className="pill small">hours</span>}
               </label>
             ))}
           </div>
         ))}
-        <div className="legend small muted">
+        <div className="legend">
+          <h2 className="side-head">Reading the colours</h2>
+          <p>Events in Bookkeeping take their project's colour.</p>
           <p>
-            <span className="ev-sample ev-tagged">striped</span> has a project hashtag but is not in Bookkeeping yet
+            <span className="ev-sample ev-tagged">Striped</span> has a project hashtag but stays outside Bookkeeping, like someone else's meeting.
           </p>
           <p>
-            <span className="ev-sample ev-sent">faded</span> already sent to Bookkeeping
+            <span className="ev-sample ev-sent">Faded</span> has a copy in Bookkeeping.
           </p>
           <p>
-            <span className="ev-sample ev-conflict">red</span> two project hashtags: not booked
+            <span className="ev-sample ev-conflict">Red edge</span> has two project hashtags, so it counts for neither.
           </p>
         </div>
       </aside>

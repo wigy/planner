@@ -8,6 +8,10 @@ function thisMonth(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 }
 
+const monthName = (month: string) => new Date(`${month}-15T12:00:00Z`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
+
+const dayName = (date: string) => new Date(`${date.slice(0, 10)}T12:00:00Z`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
+
 const time = (iso: string) => (iso.length === 10 ? 'all day' : new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Helsinki' }))
 
 export function Reports() {
@@ -81,18 +85,26 @@ export function Reports() {
               load()
             }}
           >
-            {report.locked ? `Unlock ${month}` : `Lock ${month}`}
+            {report.locked ? `Unlock ${monthName(month)}` : `Lock ${monthName(month)}`}
           </button>
         )}
       </div>
       {error && <p className="error">{error}</p>}
       {report && (
         <div className="report">
-          <h2>
-            Hours {report.month}
-            {project && ` — ${projects.find((p) => String(p.id) === project)?.title}`} {report.locked && <span className="pill">locked</span>}
-          </h2>
-          <p className="muted small">Rounding: {report.rounding}. Times in Europe/Helsinki; events crossing a month boundary are split.</p>
+          <header className="report-head">
+            <div>
+              <h2>
+                {monthName(report.month)}
+                {project && <span className="report-project">{projects.find((p) => String(p.id) === project)?.title}</span>}
+                {report.locked && <span className="pill">locked</span>}
+              </h2>
+              <p className="muted small">Rounding: {report.rounding}. Finnish time; an event that crosses into the next month is split between the two.</p>
+            </div>
+            <p className="report-total">
+              <span className="figure">{formatHours(report.totalMinutes)}</span> hours
+            </p>
+          </header>
           {report.problems.length > 0 && (
             <div className="warning no-print">
               <strong>Not counted:</strong>
@@ -122,7 +134,7 @@ export function Reports() {
                 <tbody>
                   {p.entries.map((e, i) => (
                     <tr key={i}>
-                      <td className="nowrap">{e.date}</td>
+                      <td className="nowrap">{dayName(e.date)}</td>
                       <td className="nowrap">
                         {time(e.start)}
                         {e.start.length > 10 && `–${time(e.end)}`}
@@ -148,14 +160,11 @@ export function Reports() {
               </table>
             </section>
           ))}
-          {report.projects.length === 0 && <p className="muted">Nothing booked this month.</p>}
-          <p className="total">
-            Total <strong>{formatHours(report.totalMinutes)} h</strong>
-          </p>
+          {report.projects.length === 0 && <p className="empty">No hours booked in {monthName(report.month)}. Add a project hashtag to an event to book it.</p>}
         </div>
       )}
       <div className="no-print">
-        <h2>{month.slice(0, 4)} by month (exact)</h2>
+        <h2 className="year-head">{month.slice(0, 4)} month by month, exact hours</h2>
         <table className="list">
           <thead>
             <tr>
@@ -173,7 +182,7 @@ export function Reports() {
               <tr key={m.month} className={m.month === month ? 'current' : ''}>
                 <td>
                   <button className="link" onClick={() => setMonth(m.month)}>
-                    {m.month}
+                    {new Date(`${m.month}-15T12:00:00Z`).toLocaleDateString('en-GB', { month: 'long' })}
                   </button>
                 </td>
                 {yearProjects.map((p) => (

@@ -4,6 +4,15 @@ import { COLUMN_NAMES, COLUMNS, type Column, type Label, type Me, type Ticket } 
 import { api } from './api.ts'
 import { TicketModal } from './TicketModal.tsx'
 
+/** What each column means, in the words of the board it replaced. */
+const COLUMN_HINTS: Record<Column, string> = {
+  p1: 'Most urgent',
+  p2: 'After that',
+  p3: 'When there is time',
+  p4: 'Some day',
+  done: 'Archived after 48 hours',
+}
+
 export function Board({ me, ownerId }: { me: Me; ownerId: number }) {
   const readOnly = ownerId !== me.id
   const [tickets, setTickets] = useState<Ticket[]>([])
@@ -76,15 +85,19 @@ export function Board({ me, ownerId }: { me: Me; ownerId: number }) {
   return (
     <div className="board-page">
       <div className="toolbar">
-        <select value={ownerId} onChange={(e) => (location.hash = Number(e.target.value) === me.id ? '#/board' : `#/board/${e.target.value}`)}>
-          <option value={me.id}>My board</option>
-          {me.others.map((o) => (
-            <option key={o.id} value={o.id}>
-              {o.name}'s board (read-only)
-            </option>
-          ))}
-        </select>
-        <select value={filter ?? ''} onChange={(e) => setFilter(e.target.value ? Number(e.target.value) : null)}>
+        {me.others.length > 0 && (
+          <div className="segmented" role="group" aria-label="Whose board">
+            <a href="#/board" className={readOnly ? '' : 'on'} aria-current={readOnly ? undefined : 'page'}>
+              My board
+            </a>
+            {me.others.map((o) => (
+              <a key={o.id} href={`#/board/${o.id}`} className={o.id === ownerId ? 'on' : ''} aria-current={o.id === ownerId ? 'page' : undefined}>
+                {o.name}
+              </a>
+            ))}
+          </div>
+        )}
+        <select aria-label="Show cards with label" value={filter ?? ''} onChange={(e) => setFilter(e.target.value ? Number(e.target.value) : null)}>
           <option value="">All labels</option>
           {labels.map((l) => (
             <option key={l.id} value={l.id}>
@@ -92,8 +105,10 @@ export function Board({ me, ownerId }: { me: Me; ownerId: number }) {
             </option>
           ))}
         </select>
-        <a href={owner ? `#/archive/${ownerId}` : '#/archive'}>Archive</a>
-        {readOnly && <span className="pill">Viewing {owner?.name ?? 'another user'}'s board — read-only</span>}
+        <a className="button quiet" href={owner ? `#/archive/${ownerId}` : '#/archive'}>
+          Archive
+        </a>
+        {readOnly && <span className="pill">You can look at {owner?.name ?? 'this'}'s board but not change it</span>}
         {error && <span className="error">{error}</span>}
       </div>
       <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
@@ -141,10 +156,13 @@ function ColumnView(props: {
   const [adding, setAdding] = useState('')
   return (
     <section ref={setNodeRef} className={`column col-${props.col} ${isOver ? 'over' : ''}`}>
-      <h2>
-        {COLUMN_NAMES[props.col]} <span className="count">{props.tickets.length}</span>
-      </h2>
-      {props.col === 'done' && <p className="hint">Archived 48 hours after being done.</p>}
+      <header className="column-head">
+        <h2>{COLUMN_NAMES[props.col]}</h2>
+        <span className="hint">{COLUMN_HINTS[props.col]}</span>
+        <span className="count" aria-label={`${props.tickets.length} cards`}>
+          {props.tickets.length}
+        </span>
+      </header>
       <div className="cards">
         {props.tickets.map((t) => (
           <DraggableCard key={t.id} ticket={t} labelById={props.labelById} readOnly={props.readOnly} onOpen={props.onOpen} />
@@ -160,7 +178,7 @@ function ColumnView(props: {
             setAdding('')
           }}
         >
-          <input placeholder="+ Add a card" value={adding} onChange={(e) => setAdding(e.target.value)} />
+          <input aria-label={`Add a card to ${COLUMN_NAMES[props.col]}`} placeholder="Add a card" value={adding} onChange={(e) => setAdding(e.target.value)} />
         </form>
       )}
     </section>
@@ -188,7 +206,7 @@ function DraggableCard({ ticket, labelById, readOnly, onOpen }: { ticket: Ticket
 
 function Card({ ticket, labelById, overlay }: { ticket: Ticket; labelById: Map<number, Label>; overlay?: boolean }) {
   return (
-    <div className={`card ${overlay ? 'overlay' : ''}`}>
+    <div className={`card card-${ticket.col} ${overlay ? 'overlay' : ''}`}>
       {ticket.labels.length > 0 && (
         <div className="labels">
           {ticket.labels.map((l) => {
@@ -202,10 +220,25 @@ function Card({ ticket, labelById, overlay }: { ticket: Ticket; labelById: Map<n
         </div>
       )}
       <div className="title">{ticket.title}</div>
-      <div className="meta">
-        {ticket.description && <span title="Has a description">≡</span>}
-        {ticket.comments > 0 && <span title="Comments">💬 {ticket.comments}</span>}
-      </div>
+      {(ticket.description || ticket.comments > 0) && (
+        <div className="meta">
+          {ticket.description && (
+            <span title="Has a description">
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M3 4h10M3 8h10M3 12h6" />
+              </svg>
+            </span>
+          )}
+          {ticket.comments > 0 && (
+            <span title={`${ticket.comments} comments`}>
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M3 3.5h10v7H7l-3 2.5v-2.5H3z" />
+              </svg>
+              {ticket.comments}
+            </span>
+          )}
+        </div>
+      )}
     </div>
   )
 }

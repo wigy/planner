@@ -75,23 +75,36 @@ export function TicketModal(props: {
             </select>
           )}
           <div className="labels">
-            {props.labels.map((l) => {
-              const on = t.labels.includes(l.id)
-              if (ro && !on) return null
-              return (
-                <button
-                  key={l.id}
-                  className={`label ${on ? '' : 'off'}`}
-                  style={{ background: on ? l.color : undefined, borderColor: l.color }}
-                  disabled={ro}
-                  onClick={() => save({ labels: on ? t.labels.filter((x) => x !== l.id) : [...t.labels, l.id] })}
-                >
-                  {l.name}
-                </button>
-              )
-            })}
+            {props.labels
+              .filter((l) => t.labels.includes(l.id))
+              .map((l) =>
+                ro ? (
+                  <span key={l.id} className="label" style={{ background: l.color }}>
+                    {l.name}
+                  </span>
+                ) : (
+                  <button key={l.id} className="label" style={{ background: l.color }} title={`Remove ${l.name}`} onClick={() => save({ labels: t.labels.filter((x) => x !== l.id) })}>
+                    {l.name} <span className="x">×</span>
+                  </button>
+                ),
+              )}
+            {!ro && props.labels.some((l) => !t.labels.includes(l.id)) && (
+              <span className="label-picker">
+                <select aria-label="Add a label" value="" onChange={(e) => e.target.value && save({ labels: [...t.labels, Number(e.target.value)] })}>
+                  <option value="">Add a label</option>
+                  {props.labels
+                    .filter((l) => !t.labels.includes(l.id))
+                    .map((l) => (
+                      <option key={l.id} value={l.id}>
+                        {l.name}
+                      </option>
+                    ))}
+                </select>
+              </span>
+            )}
             {!ro && (
               <form
+                className="label-picker"
                 onSubmit={async (e) => {
                   e.preventDefault()
                   if (!newLabel.trim()) return
@@ -101,7 +114,7 @@ export function TicketModal(props: {
                   setNewLabel('')
                 }}
               >
-                <input className="small" placeholder="+ label" value={newLabel} onChange={(e) => setNewLabel(e.target.value)} />
+                <input aria-label="New label" placeholder="New label" value={newLabel} onChange={(e) => setNewLabel(e.target.value)} />
               </form>
             )}
           </div>
@@ -140,7 +153,7 @@ export function TicketModal(props: {
         {t.commentList.map((c) => (
           <div key={c.id} className="comment">
             <div className="muted small">
-              {c.userName} · {new Date(c.createdAt).toLocaleString('en-GB')}
+              <strong>{c.userName}</strong> {new Date(c.createdAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}
             </div>
             <div className="markdown" dangerouslySetInnerHTML={{ __html: renderMarkdown(c.body) }} />
           </div>

@@ -156,9 +156,11 @@ export function EventModal({ occ, calendar, projects, onClose, onChanged }: { oc
   return (
     <Modal onClose={onClose} wide>
       <div className="event">
-        <div className="muted small">
-          <span className="swatch" style={{ background: calendar?.color }} /> {calendar?.name} {calendar && `· ${calendar.account}`}
-          {occ.recurring && ' · recurring'}
+        <div className="event-meta">
+          <span className="swatch" style={{ background: calendar?.color }} />
+          {calendar?.name}
+          {calendar && calendar.name !== calendar.account && <span className="muted"> in {calendar.account}</span>}
+          {occ.recurring && <span className="pill">repeats</span>}
         </div>
         {editing ? (
           <>
