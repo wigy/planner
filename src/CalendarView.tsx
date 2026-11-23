@@ -133,10 +133,10 @@ export function CalendarView({ me }: { me: Me }) {
           <h2 className="side-head">Reading the colours</h2>
           <p>Events in Bookkeeping take their project's colour.</p>
           <p>
-            <span className="ev-sample ev-tagged">Striped</span> has a project hashtag but stays outside Bookkeeping, like someone else's meeting.
+            <span className="ev-sample ev-tagged">Striped</span> has a project hashtag but cannot move to Bookkeeping: someone else's meeting, or an all-day event.
           </p>
           <p>
-            <span className="ev-sample ev-sent">Faded</span> has a copy in Bookkeeping.
+            <span className="ev-sample ev-sent">Faded</span> someone else's meeting that you sent to Bookkeeping as a copy.
           </p>
           <p>
             <span className="ev-sample ev-conflict">Red edge</span> has two project hashtags, so it counts for neither.
