@@ -1,0 +1,4 @@
+node_modules/
+dist/
+# Live data: the database and the keys beside it. Personal; never commit.
+data/
