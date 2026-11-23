@@ -494,6 +494,12 @@ tr.current {
 .report .right {
   margin-left: auto;
 }
+.entry-text {
+  white-space: pre-line;
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 2px;
+}
 .report .total {
   font-size: 16px;
   text-align: right;

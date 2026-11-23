@@ -58,3 +58,11 @@ describe('descriptions', () => {
     expect(removeHashtagsKeepLayout('Work on\n<p>#acme</p>\nmore #acme here', ['acme'])).toBe('Work on\n<p></p>\nmore here')
   })
 })
+
+describe('descriptionText', () => {
+  it('turns Google HTML into plain lines without the project tags', async () => {
+    const { descriptionText } = await import('./hashtag.ts')
+    expect(descriptionText('Refactoring<br>tests &amp; docs<p>#acme</p>', ['acme'])).toBe('Refactoring\ntests & docs')
+    expect(descriptionText('<ul><li>one</li><li>two #other</li></ul>', ['acme'])).toBe('• one\n• two #other')
+  })
+})

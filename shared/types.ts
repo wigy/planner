@@ -92,6 +92,8 @@ export type ReportEntry = {
   start: string
   end: string
   title: string
+  /** The description as plain text, without the project hashtags. */
+  text: string
   projectId: number
   minutes: number // exact, clipped to the month
   rounded: number

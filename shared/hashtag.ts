@@ -101,3 +101,28 @@ export function renameHashtag(title: string, from: string, to: string): string {
 function escape(s: string): string {
   return s.replace(/[-\\^$*+?.()|[\]{}]/g, '\\$&')
 }
+
+/**
+ * An event description as plain text for reports: Google's HTML turned into
+ * lines, and the given hashtags (the projects') taken out, since the project is
+ * shown anyway.
+ */
+export function descriptionText(description: string, tags: Iterable<string>): string {
+  const text = description
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/?(p|div|ul|ol|h\d)(\s[^>]*)?>/gi, '\n')
+    .replace(/<li(\s[^>]*)?>/gi, '\n• ')
+    .replace(/<\/li>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, '&')
+  return removeHashtagsKeepLayout(text, tags)
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .join('\n')
+}

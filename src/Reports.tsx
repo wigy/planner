@@ -127,7 +127,10 @@ export function Reports() {
                         {time(e.start)}
                         {e.start.length > 10 && `–${time(e.end)}`}
                       </td>
-                      <td>{e.title}</td>
+                      <td>
+                        {e.title}
+                        {e.text && <div className="entry-text">{e.text}</div>}
+                      </td>
                       <td className="num">
                         {formatHours(e.rounded)}
                         {e.rounded !== e.minutes && <span className="muted small"> ({formatHours(e.minutes)})</span>}

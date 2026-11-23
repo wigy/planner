@@ -2,7 +2,7 @@
 // event there whose title carries one known project hashtag is an entry. Time is
 // exact; rounding is applied here, as chosen for the report.
 
-import { parseEventBooking } from '../shared/hashtag.ts'
+import { descriptionText, parseEventBooking } from '../shared/hashtag.ts'
 import { applyRounding, describeRounding, type Rounding } from '../shared/rounding.ts'
 import { monthRange, REPORT_TZ, toWall } from '../shared/time.ts'
 import type { MonthSummary, Report, ReportEntry } from '../shared/types.ts'
@@ -11,7 +11,7 @@ import { Invalid } from './errors.ts'
 import { expand } from './recurrence.ts'
 import type { EventRow } from './sync.ts'
 
-type Raw = { minutes: number; start: string; end: string; date: string; title: string; eventId: number; projectId: number }
+type Raw = { minutes: number; start: string; end: string; date: string; title: string; text: string; eventId: number; projectId: number }
 
 function localDate(d: Date): string {
   const w = toWall(d, REPORT_TZ)
@@ -75,7 +75,7 @@ function entries(db: Db, userId: number, month: string): { raw: Raw[]; problems:
         return
       }
       if (start < fromDate || start >= toDate) return
-      raw.push({ minutes, start, end, date: start, title: ev.summary, eventId: ev.id, projectId })
+      raw.push({ minutes, start, end, date: start, title: ev.summary, text: descriptionText(ev.description, known), eventId: ev.id, projectId })
       return
     }
     const s = Math.max(Date.parse(start), from.getTime())
@@ -87,6 +87,7 @@ function entries(db: Db, userId: number, month: string): { raw: Raw[]; problems:
       end: new Date(e).toISOString(),
       date: localDate(new Date(s)),
       title: ev.summary,
+      text: descriptionText(ev.description, known),
       eventId: ev.id,
       projectId,
     })
@@ -151,18 +152,18 @@ function csvCell(v: string | number): string {
 }
 
 export function reportCsv(r: Report): string {
-  const lines = [['project', 'hashtag', 'date', 'start', 'end', 'title', 'exact_minutes', 'minutes', 'hours'].join(',')]
+  const lines = [['project', 'hashtag', 'date', 'start', 'end', 'title', 'text', 'exact_minutes', 'minutes', 'hours'].join(',')]
   const hhmm = (iso: string) => (iso.length === 10 ? '' : (() => {
     const w = toWall(new Date(iso), REPORT_TZ)
     return `${String(w.h).padStart(2, '0')}:${String(w.mi).padStart(2, '0')}`
   })())
   for (const p of r.projects) {
     for (const e of p.entries) {
-      lines.push([p.title, '#' + p.hashtag, e.date, hhmm(e.start), hhmm(e.end), e.title, Math.round(e.minutes), Math.round(e.rounded), (e.rounded / 60).toFixed(2)].map(csvCell).join(','))
+      lines.push([p.title, '#' + p.hashtag, e.date, hhmm(e.start), hhmm(e.end), e.title, e.text, Math.round(e.minutes), Math.round(e.rounded), (e.rounded / 60).toFixed(2)].map(csvCell).join(','))
     }
-    lines.push([p.title, '#' + p.hashtag, 'total', '', '', '', '', Math.round(p.minutes), (p.minutes / 60).toFixed(2)].map(csvCell).join(','))
+    lines.push([p.title, '#' + p.hashtag, 'total', '', '', '', '', '', Math.round(p.minutes), (p.minutes / 60).toFixed(2)].map(csvCell).join(','))
   }
-  lines.push(['all projects', '', 'total', '', '', '', '', Math.round(r.totalMinutes), (r.totalMinutes / 60).toFixed(2)].map(csvCell).join(','))
+  lines.push(['all projects', '', 'total', '', '', '', '', '', Math.round(r.totalMinutes), (r.totalMinutes / 60).toFixed(2)].map(csvCell).join(','))
   lines.push(['rounding: ' + r.rounding].map(csvCell).join(','))
   return lines.join('\n') + '\n'
 }
