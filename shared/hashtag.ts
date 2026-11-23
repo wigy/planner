@@ -61,12 +61,25 @@ export function removeHashtagsKeepLayout(text: string, tags: Iterable<string>): 
 }
 
 /**
- * The title and description booked to `tag` (or to nothing): every known project
- * hashtag leaves the description, and the title carries the one booked.
+ * The title and description booked to `tag` (or to nothing). The title is
+ * changed only if it already carries a project hashtag, which is then swapped in
+ * place; otherwise the hashtag goes into the description, in place of a project
+ * hashtag already there or appended on a line of its own.
  */
 export function setEventBooking(title: string, description: string, tag: string | null, known: Iterable<string>): { title: string; description: string } {
-  const list = [...known]
-  return { title: setBooking(title, tag, list), description: removeHashtagsKeepLayout(description, list) }
+  const list = [...known].map((k) => k.toLowerCase())
+  const inTitle = hashtags(title).filter((t) => list.includes(t))
+  const inDescription = hashtags(description).filter((t) => list.includes(t))
+  if (!tag) return { title: removeHashtags(title, inTitle), description: removeHashtagsKeepLayout(description, inDescription) }
+  const next = tag.toLowerCase()
+  if (inTitle.length > 0) {
+    const t = inTitle.length === 1 ? renameHashtag(title, inTitle[0], next) : setBooking(title, next, list)
+    return { title: t, description: removeHashtagsKeepLayout(description, inDescription) }
+  }
+  if (inDescription.length === 1) return { title, description: renameHashtag(description, inDescription[0], next) }
+  const rest = removeHashtagsKeepLayout(description, inDescription).replace(/\s+$/, '')
+  if (!rest) return { title, description: `#${next}` }
+  return { title, description: /<[a-z][^>]*>/i.test(rest) ? `${rest}<br>#${next}` : `${rest}\n#${next}` }
 }
 
 /**

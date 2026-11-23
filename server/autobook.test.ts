@@ -1,10 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { setEventBooking } from '../shared/hashtag.ts'
+import { EXACT } from '../shared/rounding.ts'
 import { autoBook } from './autobook.ts'
+import { bookEvent, createEvent } from './calendar.ts'
 import { all, type Db, get, openDb, run } from './db.ts'
 import { FakeGoogle } from './fake-google.ts'
 import type { Level } from './notify.ts'
 import { createProject, updateProject } from './projects.ts'
-import { setLock } from './reports.ts'
+import { report, setLock } from './reports.ts'
 import { type Ctx, syncAccount, syncCalendar } from './sync.ts'
 
 let db: Db
@@ -13,20 +16,27 @@ let ctx: Ctx
 let notes: { level: Level; text: string }[]
 const userId = 1
 const PRIMARY = 'me@example.com'
+const WORK = 'work@group.calendar.google.com'
 const BK = 'bk@group.calendar.google.com'
 const SHARED = 'other@example.com'
 const t = (s: string) => ({ dateTime: s, timeZone: 'Europe/Helsinki' })
+const mine = { organizer: { self: true } }
 
 function calId(googleId: string): number {
   return get<{ id: number }>(db, 'SELECT id FROM calendars WHERE google_calendar_id = ?', googleId)!.id
 }
 
-function booked(): { summary: string; start: string; source: string }[] {
-  return all<{ summary: string; start: string; source: string }>(
+/** google event id -> google calendar id, from the mirror. */
+function where(): Record<string, string> {
+  const rows = all<{ e: string; c: string }>(
     db,
-    `SELECT e.summary, e.start, json_extract(e.raw_json, '$.extendedProperties.private.planner_source') AS source
-     FROM events e JOIN calendars c ON c.id = e.calendar_id WHERE c.is_bookkeeping = 1 AND e.status != 'cancelled' ORDER BY e.start`,
+    "SELECT e.google_event_id AS e, c.google_calendar_id AS c FROM events e JOIN calendars c ON c.id = e.calendar_id WHERE e.status != 'cancelled' AND e.recurring_event_id IS NULL",
   )
+  return Object.fromEntries(rows.map((r) => [r.e, r.c]))
+}
+
+function inGoogle(calendar: string): string[] {
+  return [...g.cals.get(calendar)!.events.values()].filter((e) => e.status !== 'cancelled' && !e.recurringEventId).map((e) => e.id).sort()
 }
 
 beforeEach(async () => {
@@ -39,6 +49,7 @@ beforeEach(async () => {
   run(db, "INSERT INTO users (name, primary_email, created_at) VALUES ('Me', 'me@example.com', '2026-01-01')")
   run(db, "INSERT INTO google_accounts (user_id, email) VALUES (1, 'me@example.com')")
   g.addCalendar(PRIMARY, { primary: true, summary: 'Me' })
+  g.addCalendar(WORK, { summary: 'Work' })
   g.addCalendar(BK, { summary: 'Bookkeeping' })
   g.addCalendar(SHARED, { summary: 'Shared with me', accessRole: 'writer' })
   createProject(db, userId, { title: 'Acme Works', hashtag: 'acme' })
@@ -49,120 +60,109 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-describe('automatic booking', () => {
-  it('copies hashtagged events from own calendars, once', async () => {
-    g.external(PRIMARY, { id: 'a', summary: 'Coding #acme', start: t('2026-11-02T09:00:00+02:00'), end: t('2026-11-02T11:00:00+02:00'), organizer: { self: true } })
-    g.external(PRIMARY, { id: 'b', summary: 'Lunch', start: t('2026-11-02T11:00:00+02:00'), end: t('2026-11-02T12:00:00+02:00') })
-    g.external(PRIMARY, { id: 'c', summary: 'Both #acme #tasenor', start: t('2026-11-03T09:00:00+02:00'), end: t('2026-11-03T10:00:00+02:00') })
-    g.external(PRIMARY, { id: 'd', summary: 'Offsite #acme', start: { date: '2026-11-04' }, end: { date: '2026-11-05' } })
-    g.external(SHARED, { id: 'e', summary: 'Theirs #acme', start: t('2026-11-05T09:00:00+02:00'), end: t('2026-11-05T10:00:00+02:00') })
+describe('automatic booking moves the event itself', () => {
+  it('moves tagged events of own calendars into Bookkeeping, and nothing else', async () => {
+    g.external(WORK, { id: 'a', summary: 'Coding #acme', start: t('2026-11-02T09:00:00+02:00'), end: t('2026-11-02T11:00:00+02:00'), ...mine })
+    g.external(PRIMARY, { id: 'b', summary: 'Review', description: 'notes\n#tasenor', start: t('2026-11-02T12:00:00+02:00'), end: t('2026-11-02T13:00:00+02:00'), ...mine })
+    g.external(PRIMARY, { id: 'lunch', summary: 'Lunch', start: t('2026-11-02T11:00:00+02:00'), end: t('2026-11-02T12:00:00+02:00'), ...mine })
+    g.external(PRIMARY, { id: 'both', summary: 'Both #acme', description: '#tasenor', start: t('2026-11-03T09:00:00+02:00'), end: t('2026-11-03T10:00:00+02:00'), ...mine })
+    g.external(PRIMARY, { id: 'allday', summary: 'Offsite #acme', start: { date: '2026-11-04' }, end: { date: '2026-11-05' }, ...mine })
+    g.external(PRIMARY, { id: 'invite', summary: 'Their meeting #acme', start: t('2026-11-05T09:00:00+02:00'), end: t('2026-11-05T10:00:00+02:00'), organizer: { self: false } })
+    g.external(SHARED, { id: 'theirs', summary: 'Theirs #acme', start: t('2026-11-05T09:00:00+02:00'), end: t('2026-11-05T10:00:00+02:00'), ...mine })
     await syncAccount(ctx, 1)
     const r = await autoBook(ctx, userId)
-    expect(r).toMatchObject({ created: 1, skipped: 1, failed: 0 })
-    expect(booked()).toEqual([{ summary: 'Coding #acme', start: '2026-11-02T07:00:00.000Z', source: `${PRIMARY}/a` }])
-    expect((await autoBook(ctx, userId)).created).toBe(0)
+    expect(r).toMatchObject({ movedIn: 2, failed: 0 })
+    expect(inGoogle(BK)).toEqual(['a', 'b'])
+    expect(where()).toMatchObject({ a: BK, b: BK, lunch: PRIMARY, both: PRIMARY, allday: PRIMARY, invite: PRIMARY, theirs: SHARED })
+    // The titles are not touched, and there is exactly one of each event.
+    expect(g.cals.get(BK)!.events.get('a')!.summary).toBe('Coding #acme')
+    expect(all(db, "SELECT 1 FROM events WHERE google_event_id = 'a'")).toHaveLength(1)
+    expect(notes.some((n) => /someone else's meeting/.test(n.text))).toBe(true)
+    expect(report(db, userId, '2026-11', EXACT).projects.map((p) => [p.hashtag, p.minutes])).toEqual([['acme', 120], ['tasenor', 60]])
+    expect((await autoBook(ctx, userId)).movedIn).toBe(0)
   })
 
-  it('follows the source: moved, retagged, untagged and deleted', async () => {
-    g.external(PRIMARY, { id: 'a', summary: 'Coding #acme', start: t('2026-11-02T09:00:00+02:00'), end: t('2026-11-02T11:00:00+02:00') })
+  it('moves an event back where it came from when the tag goes', async () => {
+    g.external(WORK, { id: 'a', summary: 'Coding #acme', start: t('2026-11-02T09:00:00+02:00'), end: t('2026-11-02T11:00:00+02:00'), ...mine })
     await syncAccount(ctx, 1)
     await autoBook(ctx, userId)
-    g.external(PRIMARY, { id: 'a', summary: 'Ledger #tasenor', start: t('2026-11-02T10:00:00+02:00'), end: t('2026-11-02T11:00:00+02:00') })
-    await syncCalendar(ctx, calId(PRIMARY))
-    expect((await autoBook(ctx, userId)).updated).toBe(1)
-    expect(booked()).toEqual([{ summary: 'Ledger #tasenor', start: '2026-11-02T08:00:00.000Z', source: `${PRIMARY}/a` }])
-    g.external(PRIMARY, { id: 'a', summary: 'Ledger' })
-    await syncCalendar(ctx, calId(PRIMARY))
-    expect((await autoBook(ctx, userId)).removed).toBe(1)
-    expect(booked()).toEqual([])
-    g.external(PRIMARY, { id: 'a', summary: 'Ledger #tasenor' })
-    await syncCalendar(ctx, calId(PRIMARY))
+    g.external(BK, { id: 'a', summary: 'Coding' })
+    await syncCalendar(ctx, calId(BK))
+    expect((await autoBook(ctx, userId)).movedOut).toBe(1)
+    expect(where().a).toBe(WORK)
+    // An event made in Bookkeeping without a project goes to the primary calendar.
+    g.external(BK, { id: 'direct', summary: 'Untagged', start: t('2026-11-06T09:00:00+02:00'), end: t('2026-11-06T10:00:00+02:00'), ...mine })
+    await syncCalendar(ctx, calId(BK))
     await autoBook(ctx, userId)
-    g.external(PRIMARY, { id: 'a', status: 'cancelled' })
-    await syncCalendar(ctx, calId(PRIMARY))
-    await autoBook(ctx, userId)
-    expect(booked()).toEqual([])
+    expect(where().direct).toBe(PRIMARY)
   })
 
-  it('copies a series occurrence by occurrence up to the end of the month', async () => {
-    g.external(PRIMARY, {
-      id: 's',
-      summary: 'Standup #acme',
-      start: t('2026-11-23T09:00:00+02:00'),
-      end: t('2026-11-23T09:15:00+02:00'),
-      recurrence: ['RRULE:FREQ=WEEKLY'],
-    })
+  it('moves a series as a whole, with its changed occurrences', async () => {
+    g.external(PRIMARY, { id: 's', summary: 'Standup', start: t('2026-11-02T09:00:00+02:00'), end: t('2026-11-02T09:15:00+02:00'), recurrence: ['RRULE:FREQ=DAILY;COUNT=5'], ...mine })
     await syncAccount(ctx, 1)
+    const id = get<{ id: number }>(db, "SELECT id FROM events WHERE google_event_id = 's'")!.id
+    const acme = get<{ id: number }>(db, "SELECT id FROM projects WHERE hashtag = 'acme'")!.id
+    await bookEvent(ctx, userId, id, acme, '2026-11-04T07:00:00.000Z')
     await autoBook(ctx, userId)
-    expect(booked().map((b) => b.start)).toEqual(['2026-11-23T07:00:00.000Z', '2026-11-30T07:00:00.000Z'])
-    vi.setSystemTime(new Date('2026-12-01T12:00:00Z'))
-    await autoBook(ctx, userId)
-    expect(booked()).toHaveLength(6) // 2 in November, 4 Mondays in December
+    expect(where().s).toBe(BK)
+    expect(g.cals.get(BK)!.events.get('s')).toMatchObject({ summary: 'Standup', description: '#acme' })
+    expect(report(db, userId, '2026-11', EXACT).totalMinutes).toBe(75)
   })
 
-  it('leaves manual copies and locked months alone', async () => {
-    g.external(PRIMARY, { id: 'oct', summary: 'Old #acme', start: t('2026-10-02T09:00:00+03:00'), end: t('2026-10-02T10:00:00+03:00') })
-    g.external(BK, { id: 'manual', summary: 'By hand #tasenor', start: t('2026-11-03T09:00:00+02:00'), end: t('2026-11-03T10:00:00+02:00'), extendedProperties: { private: { planner_source: `${PRIMARY}/nov` } } })
-    g.external(PRIMARY, { id: 'nov', summary: 'Nov #acme', start: t('2026-11-03T09:00:00+02:00'), end: t('2026-11-03T10:00:00+02:00') })
+  it('leaves locked months alone', async () => {
+    g.external(PRIMARY, { id: 'oct', summary: 'Old #acme', start: t('2026-10-02T09:00:00+03:00'), end: t('2026-10-02T10:00:00+03:00'), ...mine })
     setLock(db, userId, '2026-10', true)
     await syncAccount(ctx, 1)
-    const r = await autoBook(ctx, userId)
-    expect(r.created).toBe(0)
-    expect(booked().map((b) => b.summary)).toEqual(['By hand #tasenor'])
+    expect((await autoBook(ctx, userId)).movedIn).toBe(0)
+    expect(where().oct).toBe(PRIMARY)
     expect(notes.some((n) => n.level === 'warning' && /locked/.test(n.text))).toBe(true)
   })
 
-  it('renames the hashtag in the source too, so the copy stays', async () => {
-    g.external(PRIMARY, { id: 'a', summary: 'Coding #acme', start: t('2026-11-02T09:00:00+02:00'), end: t('2026-11-02T11:00:00+02:00'), organizer: { self: true } })
+  it('removes the automatic copies of the earlier version and moves their sources in', async () => {
+    g.external(PRIMARY, { id: 'a', summary: 'Coding #acme', start: t('2026-11-02T09:00:00+02:00'), end: t('2026-11-02T11:00:00+02:00'), ...mine })
+    g.external(BK, { id: 'copy', summary: 'Coding #acme', start: t('2026-11-02T09:00:00+02:00'), end: t('2026-11-02T11:00:00+02:00'), extendedProperties: { private: { planner_source: `${PRIMARY}/a`, planner_auto: '1' } }, ...mine })
+    await syncAccount(ctx, 1)
+    const r = await autoBook(ctx, userId)
+    expect([r.removedCopies, r.movedIn]).toEqual([1, 1])
+    expect(inGoogle(BK)).toEqual(['a'])
+  })
+})
+
+describe('booking from planner', () => {
+  it('puts the hashtag in the description, not the title', async () => {
+    await syncAccount(ctx, 1)
+    const acme = get<{ id: number }>(db, "SELECT id FROM projects WHERE hashtag = 'acme'")!.id
+    await createEvent(ctx, userId, { calendarId: calId(PRIMARY), title: 'Planning', projectId: acme, start: '2026-11-26T07:00:00.000Z', end: '2026-11-26T08:00:00.000Z', allDay: false })
+    await autoBook(ctx, userId)
+    const ev = [...g.cals.get(BK)!.events.values()][0]
+    expect([ev.summary, ev.description]).toEqual(['Planning', '#acme'])
+    // Changing the project swaps the tag; no project moves the event back out.
+    const id = get<{ id: number }>(db, 'SELECT id FROM events WHERE google_event_id = ?', ev.id)!.id
+    const tasenor = get<{ id: number }>(db, "SELECT id FROM projects WHERE hashtag = 'tasenor'")!.id
+    await bookEvent(ctx, userId, id, tasenor)
+    expect(g.cals.get(BK)!.events.get(ev.id)!.description).toBe('#tasenor')
+    await bookEvent(ctx, userId, id, null)
+    await autoBook(ctx, userId)
+    expect(where()[ev.id]).toBe(PRIMARY)
+  })
+
+  it('swaps a tag the user typed in the title in place', () => {
+    const known = ['acme', 'tasenor']
+    expect(setEventBooking('Coding #acme today', 'x', 'tasenor', known)).toEqual({ title: 'Coding #tasenor today', description: 'x' })
+    expect(setEventBooking('Coding', 'Notes', 'acme', known)).toEqual({ title: 'Coding', description: 'Notes\n#acme' })
+    expect(setEventBooking('Coding', '<p>Notes</p>', 'acme', known)).toEqual({ title: 'Coding', description: '<p>Notes</p><br>#acme' })
+    expect(setEventBooking('Coding', 'Notes #acme here', 'tasenor', known)).toEqual({ title: 'Coding', description: 'Notes #tasenor here' })
+    expect(setEventBooking('Coding #acme', 'Notes\n#acme', null, known)).toEqual({ title: 'Coding', description: 'Notes\n' })
+  })
+
+  it('renames the hashtag where it is, so nothing moves', async () => {
+    g.external(PRIMARY, { id: 'a', summary: 'Coding', description: 'for #acme', start: t('2026-11-02T09:00:00+02:00'), end: t('2026-11-02T11:00:00+02:00'), ...mine })
     await syncAccount(ctx, 1)
     await autoBook(ctx, userId)
     const acme = get<{ id: number }>(db, "SELECT id FROM projects WHERE hashtag = 'acme'")!.id
     await updateProject(ctx, userId, acme, { hashtag: 'aw' })
     const r = await autoBook(ctx, userId)
-    expect([r.created, r.removed]).toEqual([0, 0])
-    expect(g.cals.get(PRIMARY)!.events.get('a')!.summary).toBe('Coding #aw')
-    expect(booked().map((b) => b.summary)).toEqual(['Coding #aw'])
-  })
-})
-
-describe('booking from planner', () => {
-  it('writes the hashtag into an own event, and automatic booking copies it', async () => {
-    const { bookEvent, createEvent } = await import('./calendar.ts')
-    await syncAccount(ctx, 1)
-    const acme = get<{ id: number }>(db, "SELECT id FROM projects WHERE hashtag = 'acme'")!.id
-    await createEvent(ctx, userId, { calendarId: calId(PRIMARY), title: 'Planning', projectId: acme, start: '2026-11-26T07:00:00.000Z', end: '2026-11-26T08:00:00.000Z', allDay: false })
-    const id = get<{ id: number }>(db, "SELECT id FROM events WHERE summary = 'Planning #acme'")!.id
-    await autoBook(ctx, userId)
-    expect(booked().map((b) => b.summary)).toEqual(['Planning #acme'])
-    const tasenor = get<{ id: number }>(db, "SELECT id FROM projects WHERE hashtag = 'tasenor'")!.id
-    await bookEvent(ctx, userId, id, tasenor)
-    await autoBook(ctx, userId)
-    expect(booked().map((b) => b.summary)).toEqual(['Planning #tasenor'])
-    const copy = get<{ id: number }>(db, "SELECT e.id FROM events e JOIN calendars c ON c.id = e.calendar_id WHERE c.is_bookkeeping = 1")!.id
-    await expect(bookEvent(ctx, userId, copy, null)).rejects.toThrow(/follows its source/)
-  })
-})
-
-describe('hashtags in the description', () => {
-  it('books from the description; the copy carries the tag in its title', async () => {
-    g.external(PRIMARY, { id: 'a', summary: 'Coding', description: '<p>Refactoring</p><p>#acme</p>', start: t('2026-11-02T09:00:00+02:00'), end: t('2026-11-02T11:00:00+02:00'), organizer: { self: true } })
-    await syncAccount(ctx, 1)
-    await autoBook(ctx, userId)
-    const copy = get<{ summary: string; description: string }>(db, 'SELECT e.summary, e.description FROM events e JOIN calendars c ON c.id = e.calendar_id WHERE c.is_bookkeeping = 1')!
-    expect(copy).toEqual({ summary: 'Coding #acme', description: '<p>Refactoring</p><p></p>' })
-    const { report } = await import('./reports.ts')
-    const { EXACT } = await import('../shared/rounding.ts')
-    expect(report(db, userId, '2026-11', EXACT).projects.map((p) => [p.hashtag, p.minutes])).toEqual([['acme', 120]])
-    // Picking another project in planner moves the tag into the title.
-    const { bookEvent } = await import('./calendar.ts')
-    const tasenor = get<{ id: number }>(db, "SELECT id FROM projects WHERE hashtag = 'tasenor'")!.id
-    await bookEvent(ctx, userId, get<{ id: number }>(db, "SELECT id FROM events WHERE google_event_id = 'a'")!.id, tasenor)
-    expect(g.cals.get(PRIMARY)!.events.get('a')).toMatchObject({ summary: 'Coding #tasenor', description: '<p>Refactoring</p><p></p>' })
-  })
-
-  it('counts a title and description with different project tags as a conflict', async () => {
-    g.external(PRIMARY, { id: 'a', summary: 'Coding #acme', description: 'for #tasenor', start: t('2026-11-02T09:00:00+02:00'), end: t('2026-11-02T11:00:00+02:00') })
-    await syncAccount(ctx, 1)
-    expect((await autoBook(ctx, userId)).created).toBe(0)
+    expect([r.movedIn, r.movedOut]).toEqual([0, 0])
+    expect(g.cals.get(BK)!.events.get('a')!.description).toBe('for #aw')
   })
 })

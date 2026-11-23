@@ -1,40 +1,36 @@
-// Automatic booking: an event in one of the user's own calendars whose title or
-// description has exactly one known project hashtag is copied to Bookkeeping, and the copy then
-// follows its source. The copy is marked `planner_auto` in its private extended
-// properties next to `planner_source`, so copies sent by hand are never touched.
+// Automatic booking: the project hashtag decides which calendar an event is in.
+// An event in one of the user's own calendars whose title or description has
+// exactly one known project hashtag is moved to Bookkeeping; a Bookkeeping event
+// that no longer has one is moved back where it came from. There is only ever
+// the one event: nothing is copied.
 //
-// - Only calendars the user owns count, not calendars shared with them, and never
-//   Bookkeeping itself.
-// - A recurring series is copied occurrence by occurrence, up to the end of the
-//   current month; later ones follow as the months pass.
-// - All-day events are skipped: their hours are not known.
-// - When the source changes, the copy is updated; when the source loses the
-//   hashtag or is deleted, the copy is deleted. Locked months are never touched.
+// - Moving records the origin calendar in the event's private extended
+//   properties (`planner_origin`); without one, the event goes back to the
+//   primary calendar of the Bookkeeping account.
+// - Google moves only events the user organizes, within one account, and a
+//   series only as a whole. Someone else's meeting stays where it is, and the
+//   user is told once; Send to Bookkeeping copies it on request.
+// - All-day events stay where they are: their hours are not known.
+// - Two different project hashtags are a conflict: the event is not moved.
+// - Nothing in a locked month moves.
+// - Automatic copies made by the earlier version (`planner_auto`) are deleted,
+//   and their sources are moved in instead.
 // - The run reconciles the whole state, so it is safe to repeat and catches up
 //   after any missed change.
 
-import { parseEventBooking, setEventBooking } from '../shared/hashtag.ts'
-import { monthOf, monthRange, REPORT_TZ } from '../shared/time.ts'
+import { parseEventBooking } from '../shared/hashtag.ts'
+import { monthOf } from '../shared/time.ts'
 import { all, type Db, get, run } from './db.ts'
-import type { GEvent, GEventTime } from './google.ts'
-import { expand } from './recurrence.ts'
+import type { GEvent } from './google.ts'
 import { type CalendarRow, type Ctx, ensureBookkeeping, type EventRow, storeEvent, syncCalendar } from './sync.ts'
 
-type Wanted = { key: string; summary: string; start: string; end: string; description: string; location: string; timeZone: string }
-
-type Copy = { id: number; google_event_id: string; key: string; summary: string; start: string; end: string; description: string; location: string }
-
-export type AutoBookResult = { created: number; updated: number; removed: number; skipped: number; failed: number }
-
-function lockedMonths(db: Db, userId: number): Set<string> {
-  return new Set(all<{ month: string }>(db, 'SELECT month FROM locked_months WHERE user_id = ?', userId).map((r) => r.month))
-}
+export type AutoBookResult = { movedIn: number; movedOut: number; removedCopies: number; skipped: number; failed: number }
 
 function monthOfStart(start: string): string {
   return start.length === 10 ? start.slice(0, 7) : monthOf(new Date(start))
 }
 
-function sourceCalendars(db: Db, userId: number): CalendarRow[] {
+function ownCalendars(db: Db, userId: number): CalendarRow[] {
   return all<CalendarRow>(
     db,
     `SELECT c.* FROM calendars c JOIN google_accounts a ON a.id = c.google_account_id
@@ -43,170 +39,138 @@ function sourceCalendars(db: Db, userId: number): CalendarRow[] {
   )
 }
 
-/** Every copy the user's events call for right now, by source key. */
-function wanted(db: Db, userId: number, known: string[], horizon: Date): { wanted: Map<string, Wanted>; skipped: number } {
-  const out = new Map<string, Wanted>()
-  let skipped = 0
-  for (const cal of sourceCalendars(db, userId)) {
-    const rows = all<EventRow>(db, "SELECT * FROM events WHERE calendar_id = ? AND status != 'cancelled' AND (summary LIKE '%#%' OR description LIKE '%#%')", cal.id)
-    const replaced = new Map<string, Set<string>>()
-    for (const r of all<{ recurring_event_id: string; original_start: string }>(
-      db,
-      'SELECT recurring_event_id, original_start FROM events WHERE calendar_id = ? AND recurring_event_id IS NOT NULL',
-      cal.id,
-    )) {
-      if (!replaced.has(r.recurring_event_id)) replaced.set(r.recurring_event_id, new Set())
-      replaced.get(r.recurring_event_id)!.add(r.original_start)
-    }
-    for (const ev of rows) {
-      if (!ev.start || !ev.end) continue
-      const booking = parseEventBooking(ev.summary, ev.description, known)
-      if (booking.kind !== 'booked') continue
-      if (ev.all_day === 1) {
-        skipped++
-        continue
-      }
-      const next = setEventBooking(ev.summary, ev.description, booking.hashtag, known)
-      const base = {
-        summary: next.title,
-        description: next.description,
-        location: ev.location,
-        timeZone: ev.time_zone ?? REPORT_TZ,
-      }
-      const source = `${cal.google_calendar_id}/${ev.google_event_id}`
-      if (ev.recurrence) {
-        const spans = expand(
-          { start: ev.start, end: ev.end, allDay: false, timeZone: base.timeZone, recurrence: JSON.parse(ev.recurrence) },
-          new Date(ev.start),
-          horizon,
-          replaced.get(ev.google_event_id),
-        )
-        for (const s of spans) out.set(`${source}@${s.start}`, { key: `${source}@${s.start}`, start: s.start, end: s.end, ...base })
-      } else {
-        out.set(source, { key: source, start: ev.start, end: ev.end, ...base })
-      }
-    }
-  }
-  return { wanted: out, skipped }
-}
-
-function copies(db: Db, userId: number): { auto: Map<string, Copy & { cal: CalendarRow }>; manual: Set<string> } {
-  const rows = all<Copy & { auto: string | null; calendar_id: number }>(
+function bookkeeping(db: Db, userId: number): CalendarRow | undefined {
+  return get<CalendarRow>(
     db,
-    `SELECT e.id, e.google_event_id, e.summary, e.start, e.end, e.description, e.location, e.calendar_id,
-       json_extract(e.raw_json, '$.extendedProperties.private.planner_source') AS key,
-       json_extract(e.raw_json, '$.extendedProperties.private.planner_auto') AS auto
-     FROM events e JOIN calendars c ON c.id = e.calendar_id JOIN google_accounts a ON a.id = c.google_account_id
-     WHERE a.user_id = ? AND c.is_bookkeeping = 1 AND e.status != 'cancelled' AND key IS NOT NULL`,
+    'SELECT c.* FROM calendars c JOIN google_accounts a ON a.id = c.google_account_id WHERE a.user_id = ? AND c.is_bookkeeping = 1',
     userId,
   )
-  const auto = new Map<string, Copy & { cal: CalendarRow }>()
-  const manual = new Set<string>()
-  for (const r of rows) {
-    if (r.auto === '1') auto.set(r.key, { ...r, cal: get<CalendarRow>(db, 'SELECT * FROM calendars WHERE id = ?', r.calendar_id)! })
-    else manual.add(r.key)
-  }
-  return { auto, manual }
 }
 
-function timeBody(w: Wanted): { start: GEventTime; end: GEventTime } {
-  return { start: { dateTime: w.start, timeZone: w.timeZone }, end: { dateTime: w.end, timeZone: w.timeZone } }
+function priv(ev: EventRow): Record<string, string> {
+  return (JSON.parse(ev.raw_json) as GEvent).extendedProperties?.private ?? {}
 }
 
-const warned = new Set<string>()
+const told = new Set<string>()
 
 async function reconcile(ctx: Ctx, userId: number): Promise<AutoBookResult> {
   const { db } = ctx
-  const result: AutoBookResult = { created: 0, updated: 0, removed: 0, skipped: 0, failed: 0 }
+  const result: AutoBookResult = { movedIn: 0, movedOut: 0, removedCopies: 0, skipped: 0, failed: 0 }
   const known = all<{ hashtag: string }>(db, 'SELECT hashtag FROM projects WHERE user_id = ?', userId).map((r) => r.hashtag)
-  const horizon = monthRange(monthOf(new Date())).end
-  const w = wanted(db, userId, known, horizon)
-  result.skipped = w.skipped
-  const have = copies(db, userId)
-  const locked = lockedMonths(db, userId)
-  const isLocked = (start: string) => locked.has(monthOfStart(start))
-  const warnLocked = (key: string, text: string) => {
-    if (warned.has(key)) return
-    warned.add(key)
-    ctx.notify('warning', text, 'Locked month changed')
+  const lockedList = all<{ month: string }>(db, 'SELECT month FROM locked_months WHERE user_id = ?', userId).map((r) => r.month)
+  const locked = (ev: EventRow) => {
+    const m = monthOfStart(ev.start!)
+    // A series reaches every month after its start, so a later locked month holds it too.
+    return ev.recurrence ? lockedList.some((l) => l >= m) : lockedList.includes(m)
   }
-  const toCreate = [...w.wanted.values()].filter((x) => !have.auto.has(x.key) && !have.manual.has(x.key))
-  if (toCreate.length === 0 && have.auto.size === 0) return result
-
-  const ownedCalendars = new Set(sourceCalendars(db, userId).map((c) => c.google_calendar_id))
-  let bk: CalendarRow | undefined = have.auto.values().next().value?.cal
+  const tell = (key: string, level: 'info' | 'warning', text: string) => {
+    if (told.has(key)) return
+    told.add(key)
+    ctx.notify(level, text, 'Automatic booking')
+  }
   const touched = new Set<number>()
+  let bk = bookkeeping(db, userId)
 
-  for (const x of toCreate) {
-    if (isLocked(x.start)) {
-      warnLocked(`create:${x.key}`, `"${x.summary}" (${x.start}) was not booked automatically: its month is locked.`)
-      result.skipped++
-      continue
-    }
-    try {
-      bk ??= await ensureBookkeeping(ctx, userId)
-      const reply = await ctx.apiFor(bk.google_account_id).insertEvent(bk.google_calendar_id, {
-        summary: x.summary,
-        description: x.description,
-        location: x.location,
-        ...timeBody(x),
-        extendedProperties: { private: { planner_source: x.key, planner_auto: '1' } },
-      })
-      storeEvent(ctx, bk, reply)
-      touched.add(bk.id)
-      result.created++
-    } catch (err) {
-      result.failed++
-      ctx.notify('info', `Automatic booking of "${x.summary}" (${x.start}) failed: ${String(err)}`)
+  // Masters and single events; a changed occurrence moves with its series.
+  const events = (calendarId: number) =>
+    all<EventRow>(db, "SELECT * FROM events WHERE calendar_id = ? AND status != 'cancelled' AND recurring_event_id IS NULL AND start IS NOT NULL", calendarId)
+
+  // 1. Copies from the earlier version go; their sources are moved in below.
+  if (bk) {
+    for (const ev of events(bk.id)) {
+      if (priv(ev).planner_auto !== '1') continue
+      if (locked(ev)) continue
+      try {
+        await ctx.apiFor(bk.google_account_id).deleteEvent(bk.google_calendar_id, ev.google_event_id)
+        run(db, 'DELETE FROM events WHERE id = ?', ev.id)
+        touched.add(bk.id)
+        result.removedCopies++
+      } catch (err) {
+        result.failed++
+        ctx.notify('info', `Removing the automatic copy "${ev.summary}" (${ev.start}) failed: ${String(err)}`)
+      }
     }
   }
 
-  for (const [key, copy] of have.auto) {
-    const x = w.wanted.get(key)
-    const sourceCalendar = key.slice(0, key.indexOf('/'))
-    try {
-      if (!x) {
-        // A calendar that has gone from the list says nothing about its events.
-        if (!ownedCalendars.has(sourceCalendar)) continue
-        if (isLocked(copy.start)) {
-          warnLocked(`remove:${key}`, `The source of booked event "${copy.summary}" (${copy.start}) lost its hashtag or was deleted, but its month is locked; the booking was kept.`)
+  // 2. Tagged events move in.
+  const own = ownCalendars(db, userId)
+  for (const cal of own) {
+    for (const ev of events(cal.id)) {
+      if (!ev.summary.includes('#') && !ev.description.includes('#')) continue
+      if (parseEventBooking(ev.summary, ev.description, known).kind !== 'booked') continue
+      if (priv(ev).planner_source) continue // a copy sent by hand stays a copy
+      const key = `${cal.google_calendar_id}/${ev.google_event_id}`
+      if (ev.all_day === 1) {
+        result.skipped++
+        continue
+      }
+      if (ev.organizer_self !== 1) {
+        tell(`foreign:${key}`, 'info', `"${ev.summary}" (${ev.start}) has a project hashtag, but it is someone else's meeting and cannot be moved to Bookkeeping. Use Send to Bookkeeping to copy it.`)
+        result.skipped++
+        continue
+      }
+      if (locked(ev)) {
+        tell(`locked-in:${key}`, 'warning', `"${ev.summary}" (${ev.start}) has a project hashtag, but its month is locked, so it was not moved to Bookkeeping.`)
+        result.skipped++
+        continue
+      }
+      try {
+        bk ??= await ensureBookkeeping(ctx, userId, cal.google_account_id)
+        if (bk.google_account_id !== cal.google_account_id) {
+          tell(`account:${key}`, 'info', `"${ev.summary}" (${ev.start}) has a project hashtag, but it is in another Google account than Bookkeeping, and Google moves events only within one account.`)
+          result.skipped++
           continue
         }
-        await ctx.apiFor(copy.cal.google_account_id).deleteEvent(copy.cal.google_calendar_id, copy.google_event_id)
-        run(db, 'DELETE FROM events WHERE id = ?', copy.id)
-        touched.add(copy.cal.id)
-        result.removed++
+        const api = ctx.apiFor(cal.google_account_id)
+        await api.patchEvent(cal.google_calendar_id, ev.google_event_id, { extendedProperties: { private: { planner_origin: cal.google_calendar_id } } })
+        const moved = await api.moveEvent(cal.google_calendar_id, ev.google_event_id, bk.google_calendar_id)
+        run(db, 'DELETE FROM events WHERE calendar_id = ? AND (google_event_id = ? OR recurring_event_id = ?)', cal.id, ev.google_event_id, ev.google_event_id)
+        storeEvent(ctx, bk, moved)
+        touched.add(cal.id).add(bk.id)
+        result.movedIn++
+      } catch (err) {
+        result.failed++
+        ctx.notify('info', `Moving "${ev.summary}" (${ev.start}) to Bookkeeping failed: ${String(err)}`)
+      }
+    }
+  }
+
+  // 3. Untagged Bookkeeping events move back out.
+  if (bk) {
+    const primary = get<CalendarRow>(db, 'SELECT * FROM calendars WHERE google_account_id = ? AND is_primary = 1', bk.google_account_id)
+    for (const ev of events(bk.id)) {
+      const p = priv(ev)
+      if (p.planner_source || p.planner_auto === '1') continue // copies stay; old automatic ones went above
+      const booking = parseEventBooking(ev.summary, ev.description, known)
+      if (booking.kind !== 'none') continue
+      const key = `${bk.google_calendar_id}/${ev.google_event_id}`
+      const origin = own.find((c) => c.google_calendar_id === p.planner_origin && c.google_account_id === bk!.google_account_id) ?? primary
+      if (!origin) continue
+      if (locked(ev)) {
+        tell(`locked-out:${key}`, 'warning', `"${ev.summary}" (${ev.start}) lost its project hashtag, but its month is locked, so it stays in Bookkeeping.`)
         continue
       }
-      const same =
-        copy.summary === x.summary &&
-        Date.parse(copy.start) === Date.parse(x.start) &&
-        Date.parse(copy.end) === Date.parse(x.end) &&
-        copy.description === x.description &&
-        copy.location === x.location
-      if (same) continue
-      if (isLocked(copy.start) || isLocked(x.start)) {
-        warnLocked(`update:${key}:${x.summary}:${x.start}:${x.end}`, `The source of booked event "${copy.summary}" (${copy.start}) changed, but the month is locked; the booking was kept as it was.`)
-        continue
+      if (ev.organizer_self !== 1) continue
+      try {
+        const api = ctx.apiFor(bk.google_account_id)
+        const moved = await api.moveEvent(bk.google_calendar_id, ev.google_event_id, origin.google_calendar_id)
+        run(db, 'DELETE FROM events WHERE calendar_id = ? AND (google_event_id = ? OR recurring_event_id = ?)', bk.id, ev.google_event_id, ev.google_event_id)
+        storeEvent(ctx, origin, moved)
+        touched.add(bk.id).add(origin.id)
+        result.movedOut++
+      } catch (err) {
+        result.failed++
+        ctx.notify('info', `Moving "${ev.summary}" (${ev.start}) out of Bookkeeping failed: ${String(err)}`)
       }
-      const body: Partial<GEvent> = { summary: x.summary, description: x.description, location: x.location, ...timeBody(x) }
-      const reply = await ctx.apiFor(copy.cal.google_account_id).patchEvent(copy.cal.google_calendar_id, copy.google_event_id, body)
-      storeEvent(ctx, copy.cal, reply)
-      touched.add(copy.cal.id)
-      result.updated++
-    } catch (err) {
-      result.failed++
-      ctx.notify('info', `Automatic booking update of "${copy.summary}" (${copy.start}) failed: ${String(err)}`)
     }
   }
 
   for (const id of touched) await syncCalendar(ctx, id).catch(() => {})
-  if (result.created || result.updated || result.removed || result.failed) {
-    ctx.notify(
-      result.failed ? 'warning' : 'info',
-      `Automatic booking for user ${userId}: ${result.created} copied to Bookkeeping, ${result.updated} updated, ${result.removed} removed${result.failed ? `, ${result.failed} failed` : ''}.`,
-      'Automatic booking',
-    )
+  if (result.movedIn || result.movedOut || result.removedCopies || result.failed) {
+    const parts = [`${result.movedIn} moved to Bookkeeping`, `${result.movedOut} moved out of it`]
+    if (result.removedCopies) parts.push(`${result.removedCopies} old automatic copies removed`)
+    if (result.failed) parts.push(`${result.failed} failed`)
+    ctx.notify(result.failed ? 'warning' : 'info', `Automatic booking for user ${userId}: ${parts.join(', ')}.`, 'Automatic booking')
   }
   return result
 }
@@ -214,7 +178,7 @@ async function reconcile(ctx: Ctx, userId: number): Promise<AutoBookResult> {
 const queue = new Map<number, { running: Promise<AutoBookResult>; again: boolean }>()
 
 /**
- * Brings the user's automatic Bookkeeping copies up to date. Calls while a run is
+ * Brings the user's calendars in line with their hashtags. Calls while a run is
  * going are folded into one more run after it.
  */
 export function autoBook(ctx: Ctx, userId: number): Promise<AutoBookResult> {

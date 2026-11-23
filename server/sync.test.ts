@@ -104,7 +104,8 @@ describe('calendar edits', () => {
     const acme = get<{ id: number }>(db, "SELECT id FROM projects WHERE hashtag = 'acme'")!.id
     await sendToBookkeeping(ctx, userId, eventId('m'), { projectId: acme, mode: 'copy' })
     const copy = get<{ summary: string; raw_json: string }>(db, `SELECT e.summary, e.raw_json FROM events e JOIN calendars c ON c.id = e.calendar_id WHERE c.is_bookkeeping = 1`)!
-    expect(copy.summary).toBe('Customer meeting #acme')
+    expect(copy.summary).toBe('Customer meeting')
+    expect(JSON.parse(copy.raw_json).description).toBe('#acme')
     expect(JSON.parse(copy.raw_json).extendedProperties.private.planner_source).toBe(`${PRIMARY}/m`)
     // The original is untouched and now shows where it went.
     expect(g.cals.get(PRIMARY)!.events.get('m')!.summary).toBe('Customer meeting')
@@ -118,7 +119,7 @@ describe('calendar edits', () => {
     await expect(sendToBookkeeping(ctx, userId, eventId('m'), { projectId: acme, mode: 'move' })).rejects.toThrow(/own events/)
     await sendToBookkeeping(ctx, userId, eventId('own'), { projectId: acme, mode: 'move' })
     const rows = all<{ summary: string; bk: number }>(db, 'SELECT e.summary, c.is_bookkeeping AS bk FROM events e JOIN calendars c ON c.id = e.calendar_id WHERE e.google_event_id = ?', 'own')
-    expect(rows).toEqual([{ summary: 'Own work #acme', bk: 1 }])
+    expect(rows).toEqual([{ summary: 'Own work', bk: 1 }])
   })
 
   it('reports booked time per project, and follows hashtags edited in Google', async () => {
@@ -138,16 +139,16 @@ describe('calendar edits', () => {
     expect(report(db, userId, '2026-12', EXACT).totalMinutes).toBe(60)
   })
 
-  it('books and unbooks by rewriting the title, and refuses locked months', async () => {
+  it('books and unbooks by writing the hashtag, and refuses locked months', async () => {
     g.external(BK, { id: 'w1', summary: 'Coding', start: t('2026-11-02T08:00:00+02:00'), end: t('2026-11-02T10:00:00+02:00') })
     await syncCalendar(ctx, calId(BK))
     const tasenor = get<{ id: number }>(db, "SELECT id FROM projects WHERE hashtag = 'tasenor'")!.id
     await bookEvent(ctx, userId, eventId('w1'), tasenor)
-    expect(g.cals.get(BK)!.events.get('w1')!.summary).toBe('Coding #tasenor')
+    expect(g.cals.get(BK)!.events.get('w1')!.description).toBe('#tasenor')
     setLock(db, userId, '2026-11', true)
     await expect(bookEvent(ctx, userId, eventId('w1'), null)).rejects.toThrow(/locked/)
     // A change in Google to a locked month is flagged.
-    g.external(BK, { id: 'w1', summary: 'Coding' })
+    g.external(BK, { id: 'w1', description: '' })
     await syncCalendar(ctx, calId(BK))
     expect(notes.some((n) => n.level === 'warning' && /locked month/.test(n.text))).toBe(true)
   })

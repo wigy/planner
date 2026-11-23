@@ -44,7 +44,7 @@ export function createProject(db: Db, userId: number, input: ProjectInput): Proj
 
 /**
  * Updates a project. Changing its hashtag rewrites the title of every
- * Bookkeeping event that carries the old one, except in locked months, and of
+ * Bookkeeping event that carries the old one in its title or description, except in locked months, and of
  * the user's own events in their own calendars, which automatic booking copies.
  */
 export async function updateProject(ctx: Ctx, userId: number, id: number, input: ProjectInput): Promise<{ project: Project; rewritten: number; skipped: number }> {
@@ -71,20 +71,21 @@ export async function updateProject(ctx: Ctx, userId: number, id: number, input:
       `SELECT e.*, c.google_account_id AS account_id, c.google_calendar_id FROM events e
        JOIN calendars c ON c.id = e.calendar_id JOIN google_accounts a ON a.id = c.google_account_id
        WHERE a.user_id = ? AND (c.is_bookkeeping = 1 OR (c.access_role = 'owner' AND e.organizer_self = 1))
-         AND e.status != 'cancelled' AND e.summary LIKE ?
+         AND e.status != 'cancelled' AND (e.summary LIKE ? OR e.description LIKE ?)
        ORDER BY c.is_bookkeeping`,
-      userId, `%#${old.hashtag}%`,
+      userId, `%#${old.hashtag}%`, `%#${old.hashtag}%`,
     )
     for (const ev of rows) {
       const next = renameHashtag(ev.summary, old.hashtag, hashtag)
-      if (next === ev.summary) continue
+      const nextDescription = renameHashtag(ev.description, old.hashtag, hashtag)
+      if (next === ev.summary && nextDescription === ev.description) continue
       const month = ev.start ? (ev.start.length === 10 ? ev.start.slice(0, 7) : monthOf(new Date(ev.start))) : ''
       if (locked.has(month)) {
         skipped++
         continue
       }
       try {
-        await patchQuiet(ctx, ev.account_id, ev.calendar_id, ev.google_calendar_id, ev.google_event_id, { summary: next })
+        await patchQuiet(ctx, ev.account_id, ev.calendar_id, ev.google_calendar_id, ev.google_event_id, { ...(next !== ev.summary ? { summary: next } : {}), ...(nextDescription !== ev.description ? { description: nextDescription } : {}) })
         rewritten++
       } catch (err) {
         skipped++

@@ -3,7 +3,7 @@
 // against a stale etag gets a 412 from Google: the event is fetched again and the
 // user sees the newer version (Google wins; nothing is merged).
 
-import { parseEventBooking, removeHashtagsKeepLayout, setBooking, setEventBooking } from '../shared/hashtag.ts'
+import { parseEventBooking, setEventBooking } from '../shared/hashtag.ts'
 import { monthOf, REPORT_TZ } from '../shared/time.ts'
 import type { Calendar, Occurrence } from '../shared/types.ts'
 import { all, type Db, get } from './db.ts'
@@ -116,7 +116,6 @@ export function occurrences(db: Db, userId: number, from: Date, to: Date, onlySe
             : { kind: 'none' },
       taggedProjectId: !bk && booking.kind === 'booked' ? tagToId.get(booking.hashtag)! : null,
       sentTo: bk ? null : (sent.get(key) ?? null),
-      autoCopy: bk && ev.raw_json.includes('"planner_auto"') && JSON.parse(ev.raw_json).extendedProperties?.private?.planner_auto === '1',
       unknownHashtags: booking.unknown,
     }
   }
@@ -261,15 +260,18 @@ export async function createEvent(ctx: Ctx, userId: number, input: EventInput): 
   if (!writable(cal)) throw new Forbidden('that calendar is read-only')
   refuseLocked(db, userId, cal, input.start)
   let summary = input.title.trim()
+  let description = input.description ?? ''
   if ((cal.is_bookkeeping === 1 || cal.access_role === 'owner') && input.projectId) {
     const project = projectOf(db, userId, input.projectId)
-    summary = setBooking(summary, project.hashtag, knownHashtags(db, userId))
+    const next = setEventBooking(summary, description, project.hashtag, knownHashtags(db, userId))
+    summary = next.title
+    description = next.description
   }
-  if (!summary) throw new Invalid('title required')
+  if (!summary && !description) throw new Invalid('title required')
   const api = ctx.apiFor(cal.google_account_id)
   const reply = await api.insertEvent(cal.google_calendar_id, {
     summary,
-    description: input.description ?? '',
+    description,
     location: input.location ?? '',
     ...timeBody(input, REPORT_TZ),
   })
@@ -352,24 +354,22 @@ function projectOf(db: Db, userId: number, projectId: number): { id: number; has
 }
 
 /**
- * Books an event to a project (or unbooks it) by rewriting the hashtag in its
- * title: a Bookkeeping event directly, or an event in a calendar the user owns,
- * which automatic booking then copies to Bookkeeping.
+ * Books an event to a project (or unbooks it) by writing the hashtag into its
+ * description, or swapping it in the title if the title has one. Automatic
+ * booking then moves the event into or out of Bookkeeping.
  */
 export async function bookEvent(ctx: Ctx, userId: number, eventId: number, projectId: number | null, occurrenceStart?: string) {
   const { db } = ctx
   const t = target(db, userId, eventId)
   if (t.cal.is_bookkeeping !== 1 && t.cal.access_role !== 'owner') throw new Invalid('only events in your own calendars are booked; send this one to Bookkeeping instead')
-  if (JSON.parse(t.ev.raw_json).extendedProperties?.private?.planner_auto === '1') {
-    throw new Invalid('this booking follows its source event: change the hashtag in the original event instead')
-  }
   const tag = projectId ? projectOf(db, userId, projectId).hashtag : null
   const next = setEventBooking(t.ev.summary, t.ev.description, tag, knownHashtags(db, userId))
   await updateEvent(ctx, userId, eventId, {
-    title: next.title,
+    ...(next.title !== t.ev.summary ? { title: next.title } : {}),
     ...(next.description !== t.ev.description ? { description: next.description } : {}),
     occurrenceStart,
-    scope: occurrenceStart ? 'instance' : undefined,
+    // Outside Bookkeeping a series is tagged as a whole, since Google moves only whole series.
+    scope: occurrenceStart ? (t.cal.is_bookkeeping === 1 ? 'instance' : 'series') : undefined,
   })
   ctx.notify('info', `"${t.ev.summary}" (${occurrenceStart ?? t.ev.start}) ${tag ? `booked to #${tag}` : 'unbooked'}.`)
 }
@@ -402,17 +402,18 @@ export async function sendToBookkeeping(ctx: Ctx, userId: number, eventId: numbe
   }
   if (t.ev.all_day === 1 && !(input.minutes && input.minutes > 0)) throw new Invalid('an all-day event needs the hours entered by hand')
   refuseLocked(db, userId, bk, start)
-  const summary = setBooking(t.ev.summary || '(no title)', project.hashtag, known)
+  const tagged = setEventBooking(t.ev.summary, t.ev.description, project.hashtag, known)
+  const summary = tagged.title || '(no title)'
 
   if (input.mode === 'move') {
     if (expanded || t.ev.recurrence || t.ev.recurring_event_id) throw new Invalid('a recurring event cannot be moved; copy it instead')
     if (t.ev.organizer_self !== 1 || !writable(t.cal)) throw new Forbidden('only your own events can be moved; copy this one instead')
     if (bk.google_account_id !== t.cal.google_account_id) throw new Invalid('Google moves events only within one account; copy this one instead')
     const api = ctx.apiFor(t.cal.google_account_id)
-    const body: Partial<GEvent> = { summary }
-    const description = removeHashtagsKeepLayout(t.ev.description, known)
-    if (description !== t.ev.description) body.description = description
-    if (input.minutes) body.extendedProperties = { private: { planner_minutes: String(Math.round(input.minutes)) } }
+    const body: Partial<GEvent> = { summary, description: tagged.description }
+    const p: Record<string, string> = { planner_origin: t.cal.google_calendar_id }
+    if (input.minutes) p.planner_minutes = String(Math.round(input.minutes))
+    body.extendedProperties = { private: p }
     await patch(ctx, t, t.ev.google_event_id, body, t.ev.etag ?? undefined)
     const moved = await api.moveEvent(t.cal.google_calendar_id, t.ev.google_event_id, bk.google_calendar_id)
     await afterWrite(ctx, t.cal, undefined)
@@ -428,7 +429,7 @@ export async function sendToBookkeeping(ctx: Ctx, userId: number, eventId: numbe
     t.ev.all_day === 1 ? { start: { date: start }, end: { date: end } } : timeBody({ start, end, allDay: false }, t.ev.time_zone ?? REPORT_TZ)
   const reply = await api.insertEvent(bk.google_calendar_id, {
     summary,
-    description: removeHashtagsKeepLayout(t.ev.description, known),
+    description: tagged.description,
     location: t.ev.location,
     ...time,
     extendedProperties: { private: priv },

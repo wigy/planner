@@ -83,8 +83,6 @@ export type Occurrence = {
   taggedProjectId: number | null
   /** On a non-Bookkeeping event: it has already been copied or moved to Bookkeeping. */
   sentTo: number | null
-  /** A Bookkeeping copy made by automatic booking: it follows its source event. */
-  autoCopy: boolean
   unknownHashtags: string[]
 }
 

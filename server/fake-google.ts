@@ -158,7 +158,13 @@ export class FakeGoogle implements CalendarApi {
     this.calls.push(`moveEvent ${calendarId} ${eventId} ${destination}`)
     const from = this.cal(calendarId)
     const ev = from.events.get(eventId)!
+    if (ev.organizer && ev.organizer.self === false) throw new Error('fake: 403 cannotChangeOrganizer')
     this.touch(from, { ...ev, status: 'cancelled' })
+    // Changed occurrences go with their series.
+    for (const ex of [...from.events.values()].filter((e) => e.recurringEventId === eventId)) {
+      this.touch(from, { ...ex, status: 'cancelled' })
+      this.touch(this.cal(destination), { ...structuredClone(ex) })
+    }
     const moved = { ...structuredClone(ev), status: 'confirmed' }
     this.touch(this.cal(destination), moved)
     return structuredClone(moved)
