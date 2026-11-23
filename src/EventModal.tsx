@@ -121,6 +121,7 @@ export function EventModal({ occ, calendar, projects, onClose, onChanged }: { oc
   const [busy, setBusy] = useState(false)
   const [scopeFor, setScopeFor] = useState<null | 'save' | 'delete'>(null)
   const bk = !!calendar?.bookkeeping
+  const own = !bk && calendar?.accessRole === 'owner' && !occ.allDay
   const expanded = occ.id.includes('@')
   const booked = occ.booking.kind === 'booked' ? occ.booking.projectId : null
   const [sendProject, setSendProject] = useState<number | null>(occ.taggedProjectId)
@@ -194,14 +195,32 @@ export function EventModal({ occ, calendar, projects, onClose, onChanged }: { oc
           <section className="bookkeeping">
             <h3>Bookkeeping</h3>
             {occ.booking.kind === 'conflict' && <p className="error">Two project hashtags ({occ.booking.hashtags.map((h) => '#' + h).join(', ')}): not booked. Pick one:</p>}
-            <div className="row">
-              <ProjectSelect projects={projects} value={booked} allowNone onChange={(id) => run(() => api.post(`/api/events/${occ.eventId}/book`, { projectId: id, ...(expanded ? { occurrenceStart: occ.start } : {}) }))} />
-              <span className="muted small">Sets the project hashtag in the title.</span>
-            </div>
+            {occ.autoCopy ? (
+              <p className="muted small">
+                {booked ? `Booked to ${projects.find((p) => p.id === booked)?.title ?? 'a project'}. ` : ''}
+                This copy follows its original event: change the hashtag there.
+              </p>
+            ) : (
+              <div className="row">
+                <ProjectSelect projects={projects} value={booked} allowNone onChange={(id) => run(() => api.post(`/api/events/${occ.eventId}/book`, { projectId: id, ...(expanded ? { occurrenceStart: occ.start } : {}) }))} />
+                <span className="muted small">Sets the project hashtag in the title.</span>
+              </div>
+            )}
             {occ.allDay && <p className="muted small">An all-day entry counts only with hours set when it was sent here.</p>}
           </section>
         )}
-        {!bk && (
+        {own && (
+          <section className="bookkeeping">
+            <h3>Project</h3>
+            <div className="row">
+              <ProjectSelect projects={projects} value={occ.taggedProjectId} allowNone onChange={(id) => run(() => api.post(`/api/events/${occ.eventId}/book`, { projectId: id, ...(expanded ? { occurrenceStart: occ.start } : {}) }))} />
+              <span className="muted small">
+                {occ.sentTo ? 'Copied to Bookkeeping. ' : ''}Sets the project hashtag in the title, and the event is copied to Bookkeeping by itself.
+              </span>
+            </div>
+          </section>
+        )}
+        {!bk && !own && (
           <section className="bookkeeping">
             <h3>Send to Bookkeeping</h3>
             {occ.sentTo ? (
@@ -273,7 +292,7 @@ export function NewEventModal({ initial, calendars, projects, onClose, onCreated
           e.preventDefault()
           try {
             localStorage.setItem('planner.newCalendar', String(calendarId))
-            await api.post('/api/events', { calendarId, title, description, projectId: cal?.bookkeeping ? projectId : null, ...time })
+            await api.post('/api/events', { calendarId, title, description, projectId: cal?.bookkeeping || (cal?.accessRole === 'owner' && !time.allDay) ? projectId : null, ...time })
             onCreated()
           } catch (err) {
             setError((err as Error).message)
@@ -290,7 +309,7 @@ export function NewEventModal({ initial, calendars, projects, onClose, onCreated
         </select>
         <input className="title-input" autoFocus placeholder="Title" value={title} onChange={(e) => setTitle(e.target.value)} />
         <TimeFields time={time} onChange={setTime} />
-        {cal?.bookkeeping && <ProjectSelect projects={projects} value={projectId} onChange={setProjectId} allowNone />}
+        {(cal?.bookkeeping || (cal?.accessRole === 'owner' && !time.allDay)) && <ProjectSelect projects={projects} value={projectId} onChange={setProjectId} allowNone />}
         <textarea rows={4} placeholder="Description" value={description} onChange={(e) => setDescription(e.target.value)} />
         {error && <p className="error">{error}</p>}
         <div className="row">

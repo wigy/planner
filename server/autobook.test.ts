@@ -124,3 +124,21 @@ describe('automatic booking', () => {
     expect(booked().map((b) => b.summary)).toEqual(['Coding #aw'])
   })
 })
+
+describe('booking from planner', () => {
+  it('writes the hashtag into an own event, and automatic booking copies it', async () => {
+    const { bookEvent, createEvent } = await import('./calendar.ts')
+    await syncAccount(ctx, 1)
+    const acme = get<{ id: number }>(db, "SELECT id FROM projects WHERE hashtag = 'acme'")!.id
+    await createEvent(ctx, userId, { calendarId: calId(PRIMARY), title: 'Planning', projectId: acme, start: '2026-11-26T07:00:00.000Z', end: '2026-11-26T08:00:00.000Z', allDay: false })
+    const id = get<{ id: number }>(db, "SELECT id FROM events WHERE summary = 'Planning #acme'")!.id
+    await autoBook(ctx, userId)
+    expect(booked().map((b) => b.summary)).toEqual(['Planning #acme'])
+    const tasenor = get<{ id: number }>(db, "SELECT id FROM projects WHERE hashtag = 'tasenor'")!.id
+    await bookEvent(ctx, userId, id, tasenor)
+    await autoBook(ctx, userId)
+    expect(booked().map((b) => b.summary)).toEqual(['Planning #tasenor'])
+    const copy = get<{ id: number }>(db, "SELECT e.id FROM events e JOIN calendars c ON c.id = e.calendar_id WHERE c.is_bookkeeping = 1")!.id
+    await expect(bookEvent(ctx, userId, copy, null)).rejects.toThrow(/follows its source/)
+  })
+})

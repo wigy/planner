@@ -116,6 +116,7 @@ export function occurrences(db: Db, userId: number, from: Date, to: Date, onlySe
             : { kind: 'none' },
       taggedProjectId: !bk && booking.kind === 'booked' ? tagToId.get(booking.hashtag)! : null,
       sentTo: bk ? null : (sent.get(key) ?? null),
+      autoCopy: bk && ev.raw_json.includes('"planner_auto"') && JSON.parse(ev.raw_json).extendedProperties?.private?.planner_auto === '1',
       unknownHashtags: booking.unknown,
     }
   }
@@ -249,7 +250,7 @@ export async function createEvent(ctx: Ctx, userId: number, input: EventInput): 
   if (!writable(cal)) throw new Forbidden('that calendar is read-only')
   refuseLocked(db, userId, cal, input.start)
   let summary = input.title.trim()
-  if (cal.is_bookkeeping === 1 && input.projectId) {
+  if ((cal.is_bookkeeping === 1 || cal.access_role === 'owner') && input.projectId) {
     const project = projectOf(db, userId, input.projectId)
     summary = setBooking(summary, project.hashtag, knownHashtags(db, userId))
   }
@@ -339,11 +340,15 @@ function projectOf(db: Db, userId: number, projectId: number): { id: number; has
   return p
 }
 
-/** Books a Bookkeeping event to a project (or unbooks it) by rewriting the hashtag in its title. */
+/**
+ * Books an event to a project (or unbooks it) by rewriting the hashtag in its
+ * title: a Bookkeeping event directly, or an event in a calendar the user owns,
+ * which automatic booking then copies to Bookkeeping.
+ */
 export async function bookEvent(ctx: Ctx, userId: number, eventId: number, projectId: number | null, occurrenceStart?: string) {
   const { db } = ctx
   const t = target(db, userId, eventId)
-  if (t.cal.is_bookkeeping !== 1) throw new Invalid('only Bookkeeping events are booked; send this one to Bookkeeping instead')
+  if (t.cal.is_bookkeeping !== 1 && t.cal.access_role !== 'owner') throw new Invalid('only events in your own calendars are booked; send this one to Bookkeeping instead')
   if (JSON.parse(t.ev.raw_json).extendedProperties?.private?.planner_auto === '1') {
     throw new Invalid('this booking follows its source event: change the hashtag in the original event instead')
   }
