@@ -33,8 +33,8 @@ the addresses in `PLANNER_ALLOWED_EMAILS` can log in.
   only if it already carries a project hashtag, which is then swapped in place.
 - **Automatic booking.** An event you organize, in a calendar you own, with exactly one project
   hashtag is moved to Bookkeeping within seconds of the change reaching planner; a Bookkeeping
-  event without one is moved back to the calendar it came from (`planner_origin` in its
-  private extended properties), or to your primary calendar. Google moves a series only as a
+  event without one is moved back to the calendar it came from (remembered in planner's
+  database, since Google drops private extended properties on a move), or to your primary calendar. Google moves a series only as a
   whole, so a project picked for one occurrence tags the whole series. These stay where they
   are: other people's meetings (send a copy instead), all-day events (their hours are
   unknown), events with two project hashtags, and anything in a locked month.
