@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { Project } from '../shared/types.ts'
 import { api } from './api.ts'
+import { ask } from './Confirm.tsx'
 
 type Draft = { title: string; hashtag: string; color: string; rate: string; customer: string }
 const EMPTY: Draft = { title: '', hashtag: '', color: '#3b82f6', rate: '', customer: '' }
@@ -62,7 +63,16 @@ export function Projects() {
                     className="primary"
                     onClick={async () => {
                       const renaming = edit.hashtag.replace(/^#/, '').toLowerCase() !== p.hashtag
-                      if (renaming && !confirm(`Rename #${p.hashtag} to #${edit.hashtag.replace(/^#/, '')}? Every event carrying it is rewritten in Google; locked months are left alone.`)) return
+                      const next = edit.hashtag.replace(/^#/, '').toLowerCase()
+                      if (
+                        renaming &&
+                        !(await ask({
+                          title: `Rename #${p.hashtag} to #${next}?`,
+                          body: <p>Every event that carries #{p.hashtag} is rewritten in Google Calendar. Events in locked months keep the old hashtag.</p>,
+                          confirm: 'Rename hashtag',
+                        }))
+                      )
+                        return
                       try {
                         const r = await api.patch<{ project: Project; rewritten: number; skipped: number }>(`/api/projects/${p.id}`, body(edit))
                         setNote(renaming ? `Renamed: ${r.rewritten} events rewritten, ${r.skipped} left as they were.` : '')

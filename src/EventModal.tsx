@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { Calendar, Occurrence, Project } from '../shared/types.ts'
 import { api } from './api.ts'
+import { ask } from './Confirm.tsx'
 import { renderMarkdown } from './markdown.ts'
 import { Modal } from './Modal.tsx'
 
@@ -79,18 +80,25 @@ function TimeFields({ time, onChange }: { time: Time; onChange: (t: Time) => voi
 }
 
 export function ScopeModal({ what, onPick, onCancel }: { what: string; onPick: (s: 'instance' | 'series') => void; onCancel: () => void }) {
+  const deleting = what === 'Delete'
   return (
     <Modal onClose={onCancel}>
-      <h2>{what} a recurring event</h2>
-      <p>Change only this occurrence, or every event in the series?</p>
-      <div className="row">
-        <button className="primary" onClick={() => onPick('instance')}>
-          This occurrence
-        </button>
-        <button onClick={() => onPick('series')}>Whole series</button>
-        <button className="link" onClick={onCancel}>
-          Cancel
-        </button>
+      <div className="confirm">
+        <h2>{deleting ? 'Delete a repeating event' : `${what} a repeating event`}</h2>
+        <div className="confirm-body">
+          <p>{deleting ? 'Delete only this occurrence, or every event in the series? Either way it is deleted from Google Calendar too.' : 'Change only this occurrence, or every event in the series?'}</p>
+        </div>
+        <div className="confirm-actions">
+          <button onClick={onCancel} autoFocus={deleting}>
+            Cancel
+          </button>
+          <button className={deleting ? 'danger' : ''} onClick={() => onPick('series')}>
+            {deleting ? 'Delete the series' : 'Whole series'}
+          </button>
+          <button className={deleting ? 'destroy' : 'primary'} onClick={() => onPick('instance')}>
+            {deleting ? 'Delete this one' : 'This occurrence'}
+          </button>
+        </div>
       </div>
     </Modal>
   )
@@ -184,7 +192,27 @@ export function EventModal({ occ, calendar, projects, onClose, onChanged }: { oc
             {occ.editable && (
               <div className="row">
                 <button onClick={() => setEditing(true)}>Edit</button>
-                <button className="danger" disabled={busy} onClick={() => (expanded ? setScopeFor('delete') : confirm('Delete this event in Google Calendar?') && remove())}>
+                <button
+                  className="danger"
+                  disabled={busy}
+                  onClick={async () => {
+                    if (expanded) return setScopeFor('delete')
+                    const ok = await ask({
+                      title: 'Delete this event?',
+                      body: (
+                        <>
+                          <p>
+                            <strong>{occ.title || '(no title)'}</strong>, {formatWhen(occ)}
+                          </p>
+                          <p>It is deleted from Google Calendar as well{booked ? ', and its hours leave the reports' : ''}.</p>
+                        </>
+                      ),
+                      confirm: 'Delete event',
+                      danger: true,
+                    })
+                    if (ok) remove()
+                  }}
+                >
                   Delete
                 </button>
               </div>

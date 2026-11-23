@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { Label, Me } from '../shared/types.ts'
 import { api } from './api.ts'
+import { ask } from './Confirm.tsx'
 
 export function Settings({ me, onChange }: { me: Me; onChange: () => void }) {
   const [labels, setLabels] = useState<Label[]>([])
@@ -73,7 +74,13 @@ export function Settings({ me, onChange }: { me: Me; onChange: () => void }) {
                 <button
                   className="danger"
                   onClick={async () => {
-                    if (!confirm(`Delete label "${l.name}"? It is removed from every card.`)) return
+                    const ok = await ask({
+                      title: `Delete the label “${l.name}”?`,
+                      body: <p>It is taken off every card that has it, archived cards included.</p>,
+                      confirm: 'Delete label',
+                      danger: true,
+                    })
+                    if (!ok) return
                     await api.del(`/api/labels/${l.id}`)
                     setLabels((ls) => ls.filter((x) => x.id !== l.id))
                   }}
