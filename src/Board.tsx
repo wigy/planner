@@ -2,7 +2,29 @@ import { DndContext, type DragEndEvent, DragOverlay, type DragStartEvent, Pointe
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { COLUMN_NAMES, COLUMNS, type Column, type Label, type Me, type Ticket } from '../shared/types.ts'
 import { api } from './api.ts'
+import { useKeys } from './keys.ts'
 import { TicketModal } from './TicketModal.tsx'
+
+/** What an empty column says. */
+const COLUMN_EMPTY: Record<Column, string> = {
+  p1: 'Nothing urgent.',
+  p2: 'Nothing waiting.',
+  p3: 'Nothing here yet.',
+  p4: 'No plans for some day.',
+  done: 'Nothing finished in the last two days.',
+}
+
+const DAY = 86400_000
+
+/**
+ * How long an urgent card has gone untouched: its title greys a step after a
+ * month, three months and half a year, so stale urgent work shows itself.
+ */
+function staleness(t: Ticket): { level: number; days: number } {
+  if (t.col !== 'p1' && t.col !== 'p2') return { level: 0, days: 0 }
+  const days = Math.floor((Date.now() - Date.parse(t.updatedAt)) / DAY)
+  return { level: days >= 180 ? 3 : days >= 90 ? 2 : days >= 30 ? 1 : 0, days }
+}
 
 /** What each column means, in the words of the board it replaced. */
 const COLUMN_HINTS: Record<Column, string> = {
@@ -43,6 +65,11 @@ export function Board({ me, ownerId }: { me: Me; ownerId: number }) {
   const shown = filter ? tickets.filter((t) => t.labels.includes(filter)) : tickets
   const byCol = (col: Column) => shown.filter((t) => t.col === col).sort((a, b) => a.position - b.position)
   const owner = ownerId === me.id ? null : me.others.find((o) => o.id === ownerId)
+  useKeys((key) => {
+    if (key !== 'n' || readOnly) return
+    document.getElementById('add-p1')?.focus()
+    return true
+  })
 
   function onDragStart(e: DragStartEvent) {
     setDragging(tickets.find((t) => `card:${t.id}` === e.active.id) ?? null)
@@ -163,6 +190,7 @@ function ColumnView(props: {
           {props.tickets.length}
         </span>
       </header>
+      {props.tickets.length === 0 && <p className="column-empty">{COLUMN_EMPTY[props.col]}</p>}
       <div className="cards">
         {props.tickets.map((t) => (
           <DraggableCard key={t.id} ticket={t} labelById={props.labelById} readOnly={props.readOnly} onOpen={props.onOpen} />
@@ -178,7 +206,7 @@ function ColumnView(props: {
             setAdding('')
           }}
         >
-          <input aria-label={`Add a card to ${COLUMN_NAMES[props.col]}`} placeholder="Add a card" value={adding} onChange={(e) => setAdding(e.target.value)} />
+          <input id={`add-${props.col}`} aria-label={`Add a card to ${COLUMN_NAMES[props.col]}`} placeholder="Add a card" value={adding} onChange={(e) => setAdding(e.target.value)} />
         </form>
       )}
     </section>
@@ -206,7 +234,10 @@ function DraggableCard({ ticket, labelById, readOnly, onOpen }: { ticket: Ticket
 
 function Card({ ticket, labelById, overlay }: { ticket: Ticket; labelById: Map<number, Label>; overlay?: boolean }) {
   return (
-    <div className={`card card-${ticket.col} ${overlay ? 'overlay' : ''}`}>
+    <div
+      className={`card card-${ticket.col} stale-${staleness(ticket).level} ${overlay ? 'overlay' : ''}`}
+      title={staleness(ticket).level ? `Untouched for ${staleness(ticket).days} days` : undefined}
+    >
       {ticket.labels.length > 0 && (
         <div className="labels">
           {ticket.labels.map((l) => {

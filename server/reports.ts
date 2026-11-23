@@ -4,7 +4,7 @@
 
 import { descriptionText, parseEventBooking } from '../shared/hashtag.ts'
 import { applyRounding, describeRounding, type Rounding } from '../shared/rounding.ts'
-import { monthRange, REPORT_TZ, toWall } from '../shared/time.ts'
+import { addDays, dateStart, monthRange, REPORT_TZ, toWall } from '../shared/time.ts'
 import type { MonthSummary, Report, ReportEntry } from '../shared/types.ts'
 import { all, type Db, get, now, run } from './db.ts'
 import { Invalid } from './errors.ts'
@@ -25,12 +25,17 @@ export function checkMonth(month: unknown): string {
 
 /** Booked time in the month, exact and clipped to the month's Helsinki boundaries. */
 function entries(db: Db, userId: number, month: string): { raw: Raw[]; problems: Report['problems'] } {
-  const { start: from, end: to } = monthRange(month)
+  const { start, end } = monthRange(month)
+  return entriesIn(db, userId, start, end)
+}
+
+/** Booked time between two instants, exact and clipped to them. */
+function entriesIn(db: Db, userId: number, from: Date, to: Date): { raw: Raw[]; problems: Report['problems'] } {
   const projects = all<{ id: number; hashtag: string }>(db, 'SELECT id, hashtag FROM projects WHERE user_id = ?', userId)
   const tagToId = new Map(projects.map((p) => [p.hashtag.toLowerCase(), p.id]))
   const known = [...tagToId.keys()]
-  const fromDate = month + '-01'
-  const toDate = to.toISOString().slice(0, 10)
+  const fromDate = localDate(from)
+  const toDate = localDate(to)
   const rows = all<EventRow>(
     db,
     `SELECT e.* FROM events e JOIN calendars c ON c.id = e.calendar_id JOIN google_accounts a ON a.id = c.google_account_id
@@ -109,9 +114,29 @@ function entries(db: Db, userId: number, month: string): { raw: Raw[]; problems:
   return { raw, problems }
 }
 
+const DATE = /^\d{4}-\d{2}-\d{2}$/
+
+/**
+ * Exact booked minutes per Helsinki day, for `from` up to but not including
+ * `to` (both YYYY-MM-DD): the date stamp's week total and the month view's
+ * week totals. An event crossing midnight counts on the day it starts.
+ */
+export function dailyHours(db: Db, userId: number, from: unknown, to: unknown): Record<string, number> {
+  if (typeof from !== 'string' || typeof to !== 'string' || !DATE.test(from) || !DATE.test(to) || to <= from) throw new Invalid('from and to are YYYY-MM-DD, from before to')
+  if (from < addDays(to, -100)) throw new Invalid('at most 100 days at a time')
+  const { raw } = entriesIn(db, userId, dateStart(from, REPORT_TZ), dateStart(to, REPORT_TZ))
+  const out: Record<string, number> = {}
+  for (const r of raw) out[r.date] = (out[r.date] ?? 0) + r.minutes
+  return out
+}
+
 export function report(db: Db, userId: number, month: string, rounding: Rounding, projectId?: number): Report {
   const { raw, problems } = entries(db, userId, month)
-  const projects = all<{ id: number; title: string; hashtag: string }>(db, 'SELECT id, title, hashtag FROM projects WHERE user_id = ? ORDER BY title COLLATE NOCASE', userId)
+  const projects = all<{ id: number; title: string; hashtag: string; rate: number | null; customer: string }>(
+    db,
+    'SELECT id, title, hashtag, rate, customer FROM projects WHERE user_id = ? ORDER BY title COLLATE NOCASE',
+    userId,
+  )
   const out: Report['projects'] = []
   let total = 0
   for (const p of projects) {
@@ -120,7 +145,7 @@ export function report(db: Db, userId: number, month: string, rounding: Rounding
     if (mine.length === 0 && !projectId) continue
     const rounded = applyRounding(mine.map((r) => r.minutes), rounding)
     const list: ReportEntry[] = mine.map((r, i) => ({ ...r, rounded: rounded.entries[i] }))
-    out.push({ projectId: p.id, title: p.title, hashtag: p.hashtag, minutes: rounded.total, entries: list })
+    out.push({ projectId: p.id, title: p.title, hashtag: p.hashtag, rate: p.rate, customer: p.customer, minutes: rounded.total, entries: list })
     total += rounded.total
   }
   return {

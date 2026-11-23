@@ -102,7 +102,7 @@ export type ReportEntry = {
 export type Report = {
   month: string
   rounding: string
-  projects: { projectId: number; title: string; hashtag: string; minutes: number; entries: ReportEntry[] }[]
+  projects: { projectId: number; title: string; hashtag: string; rate: number | null; customer: string; minutes: number; entries: ReportEntry[] }[]
   totalMinutes: number
   locked: boolean
   /** Bookkeeping events in the month that book nothing: two project hashtags, or an all-day event without hours. */

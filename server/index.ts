@@ -17,6 +17,7 @@
 // Projects:  GET|POST /api/projects, PATCH /api/projects/:id, GET /api/hashtags/unknown
 // Reports:   GET  /api/reports/:month?project=&step=&mode=&apply=[&format=csv]
 //            GET  /api/reports/year/:year, PUT /api/locks/:month {locked}
+//            GET  /api/hours?from=YYYY-MM-DD&to=YYYY-MM-DD (exact minutes per day)
 // Google:    POST /google/push                (push notifications)
 
 import { createHmac, randomBytes } from 'node:crypto'
@@ -36,7 +37,7 @@ import { fakeGoogle } from './dev-fake.ts'
 import { makeNotifier } from './notify.ts'
 import { autoBook } from './autobook.ts'
 import { createProject, listProjects, updateProject } from './projects.ts'
-import { checkMonth, report, reportCsv, setLock, yearSummary } from './reports.ts'
+import { checkMonth, dailyHours, report, reportCsv, setLock, yearSummary } from './reports.ts'
 import { loadKey, signSession, signValue, verifySession, verifyValue } from './secrets.ts'
 import { calendarOwner, type Ctx, ensureWatch, handlePush, syncAccount, syncAll } from './sync.ts'
 
@@ -323,6 +324,7 @@ async function api(req: IncomingMessage, res: ServerResponse, url: URL) {
   if (path === '/api/hashtags/unknown' && method === 'GET') return json(res, 200, unknownHashtags(db, userId))
 
   // ---- reports
+  if (path === '/api/hours' && method === 'GET') return json(res, 200, dailyHours(db, userId, url.searchParams.get('from'), url.searchParams.get('to')))
   if (seg[0] === 'reports' && seg[1] === 'year' && seg.length === 3 && method === 'GET') {
     const year = Number(seg[2])
     if (!Number.isInteger(year) || year < 2000 || year > 2100) throw new Invalid('bad year')

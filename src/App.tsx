@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { formatHours } from '../shared/rounding.ts'
 import type { Me } from '../shared/types.ts'
 import { api, ApiError } from './api.ts'
 import { Archive } from './Archive.tsx'
@@ -7,6 +8,9 @@ import { CalendarView } from './CalendarView.tsx'
 import { Projects } from './Projects.tsx'
 import { Reports } from './Reports.tsx'
 import { Settings } from './Settings.tsx'
+import { localDate, onHoursChanged } from './hours.ts'
+import { SHORTCUTS, useKeys } from './keys.ts'
+import { Modal } from './Modal.tsx'
 
 function useHash(): string {
   const [hash, setHash] = useState(location.hash.slice(1) || '/board')
@@ -43,9 +47,34 @@ function useToday(): Date {
   return today
 }
 
-/** Today's date, set like the corner of a pocket diary page. */
+/** Booked minutes this ISO week, kept fresh as events change. */
+function useWeekMinutes(d: Date, enabled: boolean): number | null {
+  const monday = new Date(d.getFullYear(), d.getMonth(), d.getDate() - ((d.getDay() + 6) % 7))
+  const from = localDate(monday)
+  const to = localDate(new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 7))
+  const [minutes, setMinutes] = useState<number | null>(null)
+  useEffect(() => {
+    if (!enabled) return
+    const load = () =>
+      api.get<Record<string, number>>(`/api/hours?from=${from}&to=${to}`).then(
+        (days) => setMinutes(Object.values(days).reduce((a, b) => a + b, 0)),
+        () => {},
+      )
+    load()
+    const t = setInterval(load, 5 * 60_000)
+    const off = onHoursChanged(load)
+    return () => {
+      clearInterval(t)
+      off()
+    }
+  }, [from, to, enabled])
+  return minutes
+}
+
+/** Today's date, set like the corner of a pocket diary page, with this week's booked hours. */
 function DateStamp({ large }: { large?: boolean }) {
   const d = useToday()
+  const week = useWeekMinutes(d, !large)
   const Tag = large ? 'div' : 'a'
   return (
     <Tag className={`stamp ${large ? 'large' : ''}`} {...(large ? {} : { href: '#/calendar', 'aria-label': `Today, ${d.toLocaleDateString('en-GB', { dateStyle: 'full' })}. Open the calendar.` })}>
@@ -55,6 +84,7 @@ function DateStamp({ large }: { large?: boolean }) {
         <span className="stamp-month">
           {d.toLocaleDateString('en-GB', { month: 'long' })}, week {isoWeek(d)}
         </span>
+        {week !== null && <span className="stamp-hours">{week > 0 ? `${formatHours(week)} h booked this week` : 'No hours booked this week'}</span>}
       </span>
     </Tag>
   )
@@ -80,6 +110,22 @@ export function App() {
   if (me === null) return <Login />
 
   const [, page, arg] = hash.split('/')
+  return <Shell me={me} page={page} arg={arg} setMe={setMe} reload={reload} />
+}
+
+function Shell({ me, page, arg, setMe, reload }: { me: Me; page: string; arg: string | undefined; setMe: (m: Me | null) => void; reload: () => void }) {
+  const [help, setHelp] = useState(false)
+  useKeys((key) => {
+    const go: Record<string, string> = { b: '#/board', c: '#/calendar', p: '#/projects', r: '#/reports' }
+    if (go[key]) {
+      location.hash = go[key]
+      return true
+    }
+    if (key === '?') {
+      setHelp(true)
+      return true
+    }
+  })
   const revoked = me.accounts.filter((a) => a.status !== 'ok')
   return (
     <div className="app">
@@ -118,9 +164,31 @@ export function App() {
         {page === 'archive' && <Archive me={me} ownerId={arg ? Number(arg) : me.id} />}
         {page === 'calendar' && <CalendarView me={me} />}
         {page === 'projects' && <Projects />}
-        {page === 'reports' && <Reports />}
+        {page === 'reports' && <Reports me={me} />}
         {page === 'settings' && <Settings me={me} onChange={reload} />}
       </main>
+      <button className="keys-hint quiet" onClick={() => setHelp(true)} aria-label="Keyboard shortcuts">
+        ?
+      </button>
+      {help && (
+        <Modal onClose={() => setHelp(false)}>
+          <h2>Keyboard shortcuts</h2>
+          <table className="keys">
+            <tbody>
+              {SHORTCUTS.map(([k, what]) => (
+                <tr key={k}>
+                  <td>
+                    {k.split(/\s{2}/).map((part) => (
+                      <kbd key={part}>{part}</kbd>
+                    ))}
+                  </td>
+                  <td>{what}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Modal>
+      )}
     </div>
   )
 }

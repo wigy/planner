@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { COLUMN_NAMES, COLUMNS, type Label, type Ticket, type TicketDetail } from '../shared/types.ts'
 import { api } from './api.ts'
 import { renderMarkdown } from './markdown.ts'
+import { useKeys } from './keys.ts'
 import { Modal } from './Modal.tsx'
 
 const HISTORY: Record<string, (p: Record<string, unknown>) => string> = {
@@ -51,6 +52,15 @@ export function TicketModal(props: {
       setError((e as Error).message)
     }
   }
+
+  // 1–4 move the open card between priorities, d marks it done.
+  useKeys((key) => {
+    if (ro || !t) return
+    const col = ({ '1': 'p1', '2': 'p2', '3': 'p3', '4': 'p4', d: 'done' } as const)[key as '1']
+    if (!col || col === t.col) return
+    save({ col })
+    return true
+  }, true)
 
   if (!t) return <Modal onClose={props.onClose}>{error ? <p className="error">{error}</p> : <p className="muted">Loading…</p>}</Modal>
 

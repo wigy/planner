@@ -166,3 +166,16 @@ describe('booking from planner', () => {
     expect(g.cals.get(BK)!.events.get('a')!.description).toBe('for #aw')
   })
 })
+
+describe('daily hours', () => {
+  it('sums booked minutes per Helsinki day', async () => {
+    const { dailyHours } = await import('./reports.ts')
+    g.external(BK, { id: 'a', summary: 'Coding', description: '#acme', start: t('2026-11-02T09:00:00+02:00'), end: t('2026-11-02T11:00:00+02:00'), ...mine })
+    g.external(BK, { id: 'b', summary: 'Review', description: '#tasenor', start: t('2026-11-02T13:00:00+02:00'), end: t('2026-11-02T13:30:00+02:00'), ...mine })
+    g.external(BK, { id: 'c', summary: 'Late', description: '#acme', start: t('2026-11-03T00:30:00+02:00'), end: t('2026-11-03T01:00:00+02:00'), ...mine })
+    g.external(BK, { id: 'x', summary: 'Unbooked', start: t('2026-11-04T09:00:00+02:00'), end: t('2026-11-04T10:00:00+02:00'), ...mine })
+    await syncAccount(ctx, 1)
+    expect(dailyHours(db, userId, '2026-11-02', '2026-11-09')).toEqual({ '2026-11-02': 150, '2026-11-03': 30 })
+    expect(() => dailyHours(db, userId, '2026-11-09', '2026-11-02')).toThrow()
+  })
+})

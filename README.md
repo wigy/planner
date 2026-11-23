@@ -47,6 +47,20 @@ the addresses in `PLANNER_ALLOWED_EMAILS` can log in.
   nearest), per entry or on the total, and prints which rounding it used. Month boundaries are
   Europe/Helsinki, and an event crossing one is split between the two months.
 
+## Around the app
+
+- The date in the corner shows the hours booked this week, and the month view shows each
+  week's booked hours under its week number.
+- A booked event carries its project's hashtag in the corner of its block.
+- A report lists each project's customer and hourly rate when they are set, with what the
+  hours come to in euros, and prints with your name and the date on top.
+- Urgent cards (P1 and P2) grey out step by step after a month, three months and half a year
+  without changes.
+- The colours follow the system's light or dark setting.
+- Keyboard: `b` `c` `p` `r` open the board, calendar, projects and reports; `n` adds a card to
+  P1; with a card open, `1`–`4` move it to P1–P4 and `d` to Done; in the calendar `t` goes to
+  today, `←` `→` move back and forward, and `m` `w` `d` pick month, week or day. `?` lists them.
+
 ## Running it
 
 Node 24 or later. The server is plain `node:http` running TypeScript directly through Node's

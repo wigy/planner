@@ -1,11 +1,14 @@
-import type { DateSelectArg, EventClickArg, EventDropArg, EventInput, EventSourceFuncArg } from '@fullcalendar/core'
+import type { DateSelectArg, EventClickArg, EventContentArg, EventDropArg, EventInput, EventSourceFuncArg } from '@fullcalendar/core'
 import dayGridPlugin from '@fullcalendar/daygrid'
 import interactionPlugin, { type EventResizeDoneArg } from '@fullcalendar/interaction'
 import FullCalendar from '@fullcalendar/react'
 import timeGridPlugin from '@fullcalendar/timegrid'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { formatHours } from '../shared/rounding.ts'
 import type { Calendar, Me, Occurrence, Project } from '../shared/types.ts'
 import { api } from './api.ts'
+import { hoursChanged, localDate, onHoursChanged } from './hours.ts'
+import { useKeys } from './keys.ts'
 import { EventModal, NewEventModal, ScopeModal } from './EventModal.tsx'
 
 type Pending = { occ: Occurrence; time: { start: string; end: string; allDay: boolean }; revert: () => void }
@@ -19,6 +22,32 @@ export function CalendarView({ me }: { me: Me }) {
   const [creating, setCreating] = useState<{ start: string; end: string; allDay: boolean } | null>(null)
   const [pending, setPending] = useState<Pending | null>(null)
   const ref = useRef<FullCalendar>(null)
+  // Booked minutes per day of the visible range, for the week numbers.
+  const [range, setRange] = useState<{ from: string; to: string } | null>(null)
+  const [days, setDays] = useState<Record<string, number>>({})
+  useEffect(() => {
+    if (!range) return
+    const load = () => api.get<Record<string, number>>(`/api/hours?from=${range.from}&to=${range.to}`).then(setDays, () => {})
+    load()
+    return onHoursChanged(load)
+  }, [range])
+  const weekMinutes = (monday: Date) => {
+    let sum = 0
+    for (let i = 0; i < 7; i++) sum += days[localDate(new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + i))] ?? 0
+    return sum
+  }
+
+  useKeys((key) => {
+    const cal = ref.current?.getApi()
+    if (!cal) return
+    const views: Record<string, string> = { m: 'dayGridMonth', w: 'timeGridWeek', d: 'timeGridDay' }
+    if (key === 't') cal.today()
+    else if (key === 'ArrowLeft') cal.prev()
+    else if (key === 'ArrowRight') cal.next()
+    else if (views[key]) cal.changeView(views[key])
+    else return
+    return true
+  })
 
   const loadCalendars = useCallback(() => api.get<Calendar[]>('/api/calendars').then(setCalendars, (e) => setError(e.message)), [])
   useEffect(() => {
@@ -28,7 +57,10 @@ export function CalendarView({ me }: { me: Me }) {
 
   const calById = useMemo(() => new Map(calendars.map((c) => [c.id, c])), [calendars])
   const projById = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects])
-  const refetch = () => ref.current?.getApi().refetchEvents()
+  const refetch = () => {
+    ref.current?.getApi().refetchEvents()
+    hoursChanged()
+  }
 
   const source = useCallback(
     (info: EventSourceFuncArg, ok: (events: EventInput[]) => void, fail: (e: Error) => void) => {
@@ -51,7 +83,7 @@ export function CalendarView({ me }: { me: Me }) {
                 borderColor: o.booking.kind === 'conflict' ? '#dc2626' : color,
                 editable: o.editable,
                 classNames: classes.filter(Boolean),
-                extendedProps: { occ: o },
+                extendedProps: { occ: o, tag: o.booking.kind === 'booked' && project ? project.hashtag : null },
               }
             }),
           ),
@@ -149,7 +181,20 @@ export function CalendarView({ me }: { me: Me }) {
           ref={ref}
           plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
           initialView={localStorage.getItem('planner.view') ?? 'timeGridWeek'}
-          datesSet={(arg) => localStorage.setItem('planner.view', arg.view.type)}
+          datesSet={(arg) => {
+            localStorage.setItem('planner.view', arg.view.type)
+            setRange({ from: localDate(arg.start), to: localDate(arg.end) })
+          }}
+          eventContent={renderEvent}
+          weekNumberContent={(arg) => {
+            const minutes = weekMinutes(arg.date)
+            return (
+              <span className="week-cell" title={minutes ? `${formatHours(minutes)} h booked in week ${arg.num}` : undefined}>
+                <span>W{arg.num}</span>
+                {minutes > 0 && <span className="week-hours">{formatHours(minutes)}</span>}
+              </span>
+            )
+          }}
           headerToolbar={{ left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek,timeGridDay' }}
           buttonText={{ month: 'Month', week: 'Week', day: 'Day', today: 'Today' }}
           firstDay={1}
@@ -211,6 +256,21 @@ export function CalendarView({ me }: { me: Me }) {
           }}
         />
       )}
+    </div>
+  )
+}
+
+/** An event block; a booked one carries its project's hashtag in the corner. */
+function renderEvent(arg: EventContentArg) {
+  const tag = arg.event.extendedProps.tag as string | null
+  if (!tag) return true
+  const dot = arg.event.display === 'list-item' || (!arg.event.allDay && arg.view.type === 'dayGridMonth')
+  return (
+    <div className={`ev ${dot ? 'ev-line' : ''}`}>
+      {dot && <span className="fc-daygrid-event-dot" style={{ borderColor: arg.backgroundColor }} />}
+      {arg.timeText && <span className="fc-event-time">{arg.timeText}</span>}
+      <span className="fc-event-title">{arg.event.title}</span>
+      <span className="ev-tag">#{tag}</span>
     </div>
   )
 }

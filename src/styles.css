@@ -15,6 +15,16 @@
   --pen-deep: #1a3591;
   --pen-wash: #e4e9fa;
   --danger: #b3263b;
+  --danger-deep: #8f1c2e;
+  --on-pen: #ffffff;
+  --on-danger: #ffffff;
+  --sheet-hover: #ffffff;
+  --line-hover: #b8c2cd;
+  --line-strong: #aab5c1;
+  --bad-wash: #f7e1e5;
+  --warn-wash: #fdf1dc;
+  --warn-line: #efd29c;
+  color-scheme: light;
 
   --p1: #c8304a; /* lingonberry */
   --p2: #d98a12; /* cloudberry */
@@ -101,7 +111,7 @@ textarea {
 input:hover,
 select:hover,
 textarea:hover {
-  border-color: #b8c2cd;
+  border-color: var(--line-hover);
 }
 input:focus,
 select:focus,
@@ -137,8 +147,8 @@ button,
 }
 button:hover,
 .button:hover {
-  border-color: #aab5c1;
-  background: #fff;
+  border-color: var(--line-strong);
+  background: var(--sheet-hover);
 }
 button:active,
 .button:active {
@@ -153,7 +163,7 @@ button.primary,
 .button.primary {
   background: var(--pen);
   border-color: var(--pen);
-  color: #fff;
+  color: var(--on-pen);
 }
 button.primary:hover,
 .button.primary:hover {
@@ -166,11 +176,11 @@ button.danger {
 button.destroy {
   background: var(--danger);
   border-color: var(--danger);
-  color: #fff;
+  color: var(--on-danger);
 }
 button.destroy:hover {
-  background: #8f1c2e;
-  border-color: #8f1c2e;
+  background: var(--danger-deep);
+  border-color: var(--danger-deep);
 }
 button.quiet,
 .button.quiet {
@@ -248,7 +258,7 @@ textarea {
   vertical-align: middle;
 }
 .pill.bad {
-  background: #f7e1e5;
+  background: var(--bad-wash);
   color: var(--danger);
 }
 .swatch {
@@ -299,6 +309,11 @@ textarea {
 .stamp-month {
   font-size: 12.5px;
   color: var(--graphite);
+}
+.stamp-hours {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--pen);
 }
 .stamp:hover .stamp-day {
   color: var(--pen-deep);
@@ -381,8 +396,8 @@ textarea {
   font-size: 13px;
 }
 .banner {
-  background: #fdf1dc;
-  border-bottom: 1px solid #efd29c;
+  background: var(--warn-wash);
+  border-bottom: 1px solid var(--warn-line);
   padding: 9px 20px;
 }
 main {
@@ -504,6 +519,12 @@ main {
   font-weight: 700;
   color: var(--graphite);
 }
+.column-empty {
+  margin: 4px 4px 8px;
+  font-size: 13.5px;
+  font-style: italic;
+  color: var(--graphite);
+}
 .cards {
   display: flex;
   flex-direction: column;
@@ -541,6 +562,19 @@ main {
   word-break: break-word;
   font-weight: 500;
   font-size: 14.5px;
+}
+/* Urgent cards nobody has touched for a month, a quarter, half a year. */
+.stale-1 .title {
+  color: color-mix(in srgb, var(--ink) 78%, var(--graphite));
+}
+.stale-2 .title {
+  color: color-mix(in srgb, var(--ink) 45%, var(--graphite));
+}
+.stale-3 .title {
+  color: var(--graphite);
+}
+.stale-3 {
+  background: color-mix(in srgb, var(--sheet) 70%, var(--frost-deep));
 }
 .card-done .title {
   color: var(--graphite);
@@ -613,7 +647,7 @@ button.label:hover .x {
   width: 100%;
   margin-top: 8px;
   background: transparent;
-  border: 1px dashed #b6c0cb;
+  border: 1px dashed var(--line-strong);
 }
 .add input::placeholder {
   color: var(--graphite);
@@ -763,6 +797,49 @@ button.label:hover .x {
   margin-top: 20px;
 }
 
+/* ---- keyboard */
+.keys-hint {
+  position: fixed;
+  right: 14px;
+  bottom: 14px;
+  width: 30px;
+  height: 30px;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--sheet);
+  box-shadow: var(--lift);
+  z-index: 40;
+}
+table.keys {
+  border-collapse: collapse;
+  width: 100%;
+}
+table.keys td {
+  padding: 6px 0;
+  border-bottom: 1px solid var(--frost-deep);
+  vertical-align: top;
+}
+table.keys td:first-child {
+  white-space: nowrap;
+  padding-right: 18px;
+  width: 1%;
+}
+kbd {
+  display: inline-block;
+  min-width: 24px;
+  padding: 1px 7px;
+  margin-right: 4px;
+  text-align: center;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+  background: var(--frost);
+  border: 1px solid var(--hairline);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+}
+
 /* ---- confirmation */
 .confirm h2 {
   margin: 0 36px 10px 0;
@@ -879,8 +956,8 @@ button.label:hover .x {
   --fc-button-bg-color: var(--sheet);
   --fc-button-border-color: var(--hairline);
   --fc-button-text-color: var(--ink);
-  --fc-button-hover-bg-color: #fff;
-  --fc-button-hover-border-color: #aab5c1;
+  --fc-button-hover-bg-color: var(--sheet-hover);
+  --fc-button-hover-border-color: var(--line-strong);
   --fc-button-hover-text-color: var(--ink);
   --fc-button-active-bg-color: var(--ink);
   --fc-button-active-border-color: var(--ink);
@@ -908,7 +985,7 @@ button.label:hover .x {
 }
 .fc .fc-button-primary:not(:disabled).fc-button-active,
 .fc .fc-button-primary:not(:disabled).fc-button-active:hover {
-  color: #fff;
+  color: var(--sheet);
   background: var(--ink);
 }
 .fc .fc-today-button:disabled {
@@ -928,7 +1005,7 @@ button.label:hover .x {
   text-decoration: none;
 }
 .fc .fc-day-today .fc-daygrid-day-number {
-  color: #fff;
+  color: var(--on-pen);
   background: var(--pen);
   border-radius: 999px;
   min-width: 24px;
@@ -1001,6 +1078,72 @@ button.label:hover .x {
     inset 0 0 0 2px var(--danger) !important;
 }
 
+/* Booked events: the project's hashtag in the corner. */
+.ev {
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 14px;
+  position: relative;
+}
+.ev .fc-event-title {
+  overflow: hidden;
+}
+.ev-tag {
+  position: absolute;
+  right: 2px;
+  bottom: 1px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 0 5px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.22);
+  color: #fff;
+}
+.fc-timegrid-event-short .ev {
+  flex-direction: row;
+  gap: 4px;
+  padding-bottom: 0;
+}
+.fc-timegrid-event-short .ev-tag {
+  display: none;
+}
+.ev.ev-line {
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+  padding: 0 2px;
+}
+/* In a month cell the dot already carries the project's colour, and the title needs the room. */
+.ev-line .ev-tag {
+  display: none;
+}
+.ev-line .fc-event-title {
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.fc-daygrid-block-event .ev {
+  flex-direction: row;
+  gap: 4px;
+  padding: 0 2px;
+}
+.fc-daygrid-block-event .ev-tag {
+  position: static;
+  margin-left: auto;
+}
+.week-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.15;
+}
+.week-hours {
+  font-weight: 600;
+  color: var(--pen);
+  font-size: 11px;
+}
+
 /* ---- tables, projects, reports */
 table.list {
   width: 100%;
@@ -1041,8 +1184,8 @@ tr.current td {
   background: color-mix(in srgb, var(--pen-wash) 60%, transparent);
 }
 .warning {
-  background: #fdf1dc;
-  border: 1px solid #efd29c;
+  background: var(--warn-wash);
+  border: 1px solid var(--warn-line);
   border-radius: var(--r-card);
   padding: 10px 14px;
   margin-bottom: 16px;
@@ -1101,6 +1244,21 @@ tr.current td {
 .report h3 .right {
   margin-left: auto;
 }
+.project-terms {
+  margin: -4px 0 8px;
+  color: var(--graphite);
+  font-size: 13.5px;
+}
+.report-euros {
+  display: block;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+  margin-top: 2px;
+}
+.print-only {
+  display: none;
+}
 .entry-text {
   white-space: pre-line;
   color: var(--graphite);
@@ -1115,8 +1273,27 @@ tr.current td {
 @media print {
   .top,
   .banner,
-  .no-print {
+  .no-print,
+  .keys-hint {
     display: none !important;
+  }
+  .print-only {
+    display: flex;
+  }
+  .print-head {
+    justify-content: space-between;
+    font-size: 13px;
+    margin-bottom: 28px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--hairline);
+  }
+  .print-meta {
+    text-align: right;
+    color: var(--graphite);
+  }
+  .report h3,
+  table.list tr {
+    break-inside: avoid;
   }
   main {
     padding: 0;
@@ -1173,6 +1350,52 @@ tr.current td {
   }
   .report-total {
     text-align: left;
+  }
+}
+
+/* ---- dark: the same diary by lamplight. Deep navy, not black; the forest
+   colours brightened just enough to hold their contrast. */
+@media screen and (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --frost: #0e1625;
+    --frost-deep: #16213a;
+    --sheet: #1b2740;
+    --sheet-hover: #22304d;
+    --ink: #e4eaf3;
+    --graphite: #95a2b6;
+    --hairline: #2b3a58;
+    --line-hover: #3b4c6e;
+    --line-strong: #4a5d82;
+    --pen: #8ea4ff;
+    --pen-deep: #b2c0ff;
+    --pen-wash: #26345e;
+    --on-pen: #0e1625;
+    --danger: #ff7085;
+    --danger-deep: #ff9aa9;
+    --on-danger: #1b0c10;
+    --bad-wash: #3d1a24;
+    --warn-wash: #3a2d14;
+    --warn-line: #6b5322;
+    --p1: #f2647c;
+    --p2: #f2b04a;
+    --p3: #4fc28d;
+    --p4: #8c98a9;
+    --done: #8ea4ff;
+    --lift: 0 1px 2px rgba(0, 0, 0, 0.35);
+    --float: 0 18px 50px -12px rgba(0, 0, 0, 0.7), 0 4px 12px rgba(0, 0, 0, 0.3);
+  }
+  .ev-sample {
+    background: #5b78e0;
+  }
+  .fc .fc-event {
+    border-color: transparent;
+  }
+}
+
+@media print {
+  :root {
+    color-scheme: light;
   }
 }
 

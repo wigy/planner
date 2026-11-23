@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { formatHours } from '../shared/rounding.ts'
-import type { MonthSummary, Project, Report } from '../shared/types.ts'
+import type { Me, MonthSummary, Project, Report } from '../shared/types.ts'
 import { api } from './api.ts'
 
 function thisMonth(): string {
@@ -14,7 +14,12 @@ const dayName = (date: string) => new Date(`${date.slice(0, 10)}T12:00:00Z`).toL
 
 const time = (iso: string) => (iso.length === 10 ? 'all day' : new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Helsinki' }))
 
-export function Reports() {
+const euros = (n: number) => n.toLocaleString('en-GB', { style: 'currency', currency: 'EUR' })
+
+/** What the hours are worth at the project's rate; null without a rate. */
+const amount = (minutes: number, rate: number | null) => (rate === null ? null : Math.round((minutes / 60) * rate * 100) / 100)
+
+export function Reports({ me }: { me: Me }) {
   const [month, setMonth] = useState(thisMonth())
   const [project, setProject] = useState('')
   const [step, setStep] = useState('0')
@@ -36,6 +41,9 @@ export function Reports() {
   useEffect(() => {
     api.get<MonthSummary[]>(`/api/reports/year/${month.slice(0, 4)}`).then(setYear)
   }, [month.slice(0, 4)])
+
+  const priced = report?.projects.filter((p) => p.rate !== null) ?? []
+  const total = priced.length ? priced.reduce((sum, p) => sum + amount(p.minutes, p.rate)!, 0) : null
 
   const yearProjects = projects.filter((p) => year.some((m) => m.byProject[p.id]))
 
@@ -92,6 +100,16 @@ export function Reports() {
       {error && <p className="error">{error}</p>}
       {report && (
         <div className="report">
+          <div className="print-only print-head">
+            <div>
+              <strong>{me.name}</strong>
+              <div>{me.email}</div>
+            </div>
+            <div className="print-meta">
+              <div>Hours for {monthName(report.month)}</div>
+              <div>Printed {new Date().toLocaleDateString('en-GB', { dateStyle: 'long' })}</div>
+            </div>
+          </div>
           <header className="report-head">
             <div>
               <h2>
@@ -103,6 +121,7 @@ export function Reports() {
             </div>
             <p className="report-total">
               <span className="figure">{formatHours(report.totalMinutes)}</span> hours
+              {total !== null && <span className="report-euros">{euros(total)}</span>}
             </p>
           </header>
           {report.problems.length > 0 && (
@@ -120,8 +139,18 @@ export function Reports() {
           {report.projects.map((p) => (
             <section key={p.projectId}>
               <h3>
-                {p.title} <span className="muted">#{p.hashtag}</span> <span className="right">{formatHours(p.minutes)} h</span>
+                {p.title} <span className="muted">#{p.hashtag}</span>
+                <span className="right">
+                  {formatHours(p.minutes)} h{amount(p.minutes, p.rate) !== null && <span className="muted"> {euros(amount(p.minutes, p.rate)!)}</span>}
+                </span>
               </h3>
+              {(p.customer || p.rate !== null) && (
+                <p className="project-terms">
+                  {p.customer && <>For {p.customer}</>}
+                  {p.customer && p.rate !== null && ', '}
+                  {p.rate !== null && <>{euros(p.rate)} an hour</>}
+                </p>
+              )}
               <table className="list">
                 <thead>
                   <tr>
