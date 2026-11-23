@@ -14,7 +14,8 @@ export class GoogleError extends Error {
   }
 }
 
-export type GEventTime = { date?: string; dateTime?: string; timeZone?: string }
+// null clears a field in a patch: Google merges start and end field by field.
+export type GEventTime = { date?: string | null; dateTime?: string | null; timeZone?: string | null }
 
 export type GEvent = {
   id: string

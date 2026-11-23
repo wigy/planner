@@ -205,8 +205,19 @@ async function afterWrite(ctx: Ctx, cal: CalendarRow, reply: GEvent | undefined)
   await syncCalendar(ctx, cal.id)
 }
 
+/**
+ * Google merges a patch's start and end into the old ones field by field, so a
+ * switch between timed and all-day has to clear the other kind of time, or the
+ * event would carry both and Google refuses it ("Invalid start time").
+ */
+function clearOtherTime(t: GEventTime): GEventTime {
+  return t.date ? { date: t.date, dateTime: null, timeZone: null } : { ...t, date: null }
+}
+
 async function patch(ctx: Ctx, t: Target, eventId: string, body: Partial<GEvent>, etag?: string): Promise<GEvent> {
   const api = ctx.apiFor(t.cal.google_account_id)
+  if (body.start) body.start = clearOtherTime(body.start)
+  if (body.end) body.end = clearOtherTime(body.end)
   try {
     return await api.patchEvent(t.cal.google_calendar_id, eventId, body, etag)
   } catch (err) {

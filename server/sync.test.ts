@@ -195,3 +195,15 @@ describe('calendar edits', () => {
     expect(g.cals.get(PRIMARY)!.events.get('standup')!.start!.dateTime).toBe('2026-11-02T08:00:00.000Z')
   })
 })
+
+describe('switching between timed and all-day', () => {
+  it('clears the other kind of time, as Google merges start and end', async () => {
+    const { updateEvent } = await import('./calendar.ts')
+    g.external(PRIMARY, { id: 'sw', summary: 'Switch', start: t('2026-11-26T09:00:00+02:00'), end: t('2026-11-26T10:00:00+02:00') })
+    await syncAccount(ctx, 1)
+    await updateEvent(ctx, userId, eventId('sw'), { time: { start: '2026-11-12', end: '2026-11-13', allDay: true } })
+    expect(g.cals.get(PRIMARY)!.events.get('sw')!.start).toEqual({ date: '2026-11-12' })
+    await updateEvent(ctx, userId, eventId('sw'), { time: { start: '2026-11-12T08:00:00.000Z', end: '2026-11-12T09:00:00.000Z', allDay: false } })
+    expect(g.cals.get(PRIMARY)!.events.get('sw')!.start).toEqual({ dateTime: '2026-11-12T08:00:00.000Z', timeZone: 'Europe/Helsinki' })
+  })
+})

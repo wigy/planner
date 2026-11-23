@@ -127,6 +127,14 @@ export class FakeGoogle implements CalendarApi {
     }
     if (etag && ev.etag !== etag) throw new PreconditionFailed('etag mismatch')
     const next = { ...structuredClone(ev), ...structuredClone(patch) }
+    // Like Google, start and end are merged field by field, and null clears a field.
+    for (const k of ['start', 'end'] as const) {
+      if (!patch[k]) continue
+      const merged: Record<string, unknown> = { ...(ev[k] ?? {}), ...patch[k] }
+      for (const f of Object.keys(merged)) if (merged[f] === null) delete merged[f]
+      if (merged.date && merged.dateTime) throw new Error('fake: 400 Invalid start time')
+      next[k] = merged
+    }
     if (patch.extendedProperties) {
       next.extendedProperties = { private: { ...(ev.extendedProperties?.private ?? {}), ...(patch.extendedProperties.private ?? {}) } }
     }
