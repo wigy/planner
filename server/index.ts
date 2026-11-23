@@ -359,8 +359,22 @@ async function file(res: ServerResponse, path: string) {
   createReadStream(full).pipe(res)
 }
 
+/** The request URL, or null for one that does not parse (scanners send those). */
+export function parseUrl(raw: string | undefined): URL | null {
+  try {
+    // Only the path and query matter; a leading // would otherwise read as a host.
+    return new URL((raw ?? '/').replace(/^\/+/, '/'), 'http://local')
+  } catch {
+    return null
+  }
+}
+
 const server = createServer(async (req, res) => {
-  const url = new URL(req.url ?? '/', 'http://local')
+  const url = parseUrl(req.url)
+  if (!url) {
+    res.writeHead(400, { 'content-type': 'text/plain' })
+    return res.end('bad request')
+  }
   try {
     if (url.pathname === '/google/push' && req.method === 'POST') {
       handlePush(ctx, String(req.headers['x-goog-channel-id'] ?? ''), req.headers['x-goog-channel-token'] as string | undefined, req.headers['x-goog-resource-state'] as string | undefined)
