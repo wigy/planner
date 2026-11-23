@@ -24,6 +24,7 @@
   --bad-wash: #f7e1e5;
   --warn-wash: #fdf1dc;
   --warn-line: #efd29c;
+  --dot: rgba(21, 35, 59, 0.11);
   color-scheme: light;
 
   --p1: #c8304a; /* lingonberry */
@@ -54,6 +55,10 @@
 body {
   margin: 0;
   min-height: 100vh;
+  /* Dot-grid diary paper: the frost the sheets lie on. */
+  background-image: radial-gradient(circle, var(--dot) 1px, transparent 1.4px);
+  background-size: 22px 22px;
+  background-position: 11px 11px;
 }
 a {
   color: var(--pen);
@@ -315,6 +320,52 @@ textarea {
   font-weight: 600;
   color: var(--pen);
 }
+.week-strip {
+  display: flex;
+  gap: 2px;
+  align-self: stretch;
+  padding: 3px 0 2px;
+  margin-left: 2px;
+}
+.week-day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  width: 10px;
+}
+.week-track {
+  flex: 1;
+  width: 7px;
+  display: flex;
+  align-items: flex-end;
+  border-radius: 2px;
+  background: var(--frost-deep);
+  overflow: hidden;
+}
+.week-bar {
+  width: 100%;
+  background: var(--line-strong);
+  transition: height 0.3s ease-out;
+}
+.week-day.today .week-bar {
+  background: var(--pen);
+}
+.week-day.today .week-track {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--pen) 40%, transparent);
+}
+.week-letter {
+  font-size: 9.5px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--graphite);
+}
+.week-day.today .week-letter {
+  color: var(--pen);
+}
+.week-day.future .week-letter {
+  opacity: 0.5;
+}
 .stamp:hover .stamp-day {
   color: var(--pen-deep);
 }
@@ -515,9 +566,15 @@ main {
   text-overflow: ellipsis;
 }
 .column-head .count {
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 700;
-  color: var(--graphite);
+  min-width: 22px;
+  padding: 0 7px;
+  text-align: center;
+  border-radius: 999px;
+  color: var(--col);
+  background: color-mix(in srgb, var(--col) 14%, transparent);
+  font-variant-numeric: tabular-nums;
 }
 .column-empty {
   margin: 4px 4px 8px;
@@ -544,17 +601,45 @@ main {
 .card {
   background: var(--sheet);
   border-radius: var(--r-card);
-  padding: 9px 11px 10px;
-  box-shadow: var(--lift);
+  padding: 9px 11px 10px 13px;
+  /* A short ink mark in the column's colour, like a margin note. */
+  box-shadow:
+    var(--lift),
+    inset 3px 0 0 color-mix(in srgb, var(--col) 75%, transparent);
+  animation: settle 0.2s ease-out;
   cursor: pointer;
   border: 1px solid transparent;
   transition: border-color 0.12s;
+}
+.card-p1 {
+  --col: var(--p1);
+}
+.card-p2 {
+  --col: var(--p2);
+}
+.card-p3 {
+  --col: var(--p3);
+}
+.card-p4 {
+  --col: var(--p4);
+}
+.card-done {
+  --col: var(--done);
+}
+@keyframes settle {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
 }
 .card:hover {
   border-color: color-mix(in srgb, var(--col) 45%, transparent);
 }
 .card.overlay {
-  box-shadow: var(--float);
+  animation: none;
+  box-shadow:
+    var(--float),
+    inset 3px 0 0 color-mix(in srgb, var(--col) 75%, transparent);
   transform: rotate(-1.5deg);
   border-color: var(--pen);
 }
@@ -575,6 +660,16 @@ main {
 }
 .stale-3 {
   background: color-mix(in srgb, var(--sheet) 70%, var(--frost-deep));
+}
+.card .tick {
+  width: 15px;
+  height: 15px;
+  margin: 0 5px -2px 0;
+  fill: none;
+  stroke: var(--done);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 .card-done .title {
   color: var(--graphite);
@@ -1302,6 +1397,9 @@ tr.current td {
   body {
     background: #fff;
   }
+  body {
+    background-image: none;
+  }
   table.list {
     box-shadow: none;
     border: 1px solid var(--hairline);
@@ -1377,6 +1475,7 @@ tr.current td {
     --bad-wash: #3d1a24;
     --warn-wash: #3a2d14;
     --warn-line: #6b5322;
+    --dot: rgba(228, 234, 243, 0.07);
     --p1: #f2647c;
     --p2: #f2b04a;
     --p3: #4fc28d;

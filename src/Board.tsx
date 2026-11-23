@@ -250,7 +250,14 @@ function Card({ ticket, labelById, overlay }: { ticket: Ticket; labelById: Map<n
           })}
         </div>
       )}
-      <div className="title">{ticket.title}</div>
+      <div className="title">
+        {ticket.col === 'done' && (
+          <svg className="tick" viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M3 8.5l3.2 3L13 4.5" />
+          </svg>
+        )}
+        {ticket.title}
+      </div>
       {(ticket.description || ticket.comments > 0) && (
         <div className="meta">
           {ticket.description && (

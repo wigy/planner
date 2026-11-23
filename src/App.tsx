@@ -47,17 +47,25 @@ function useToday(): Date {
   return today
 }
 
-/** Booked minutes this ISO week, kept fresh as events change. */
-function useWeekMinutes(d: Date, enabled: boolean): number | null {
+/** Booked minutes on each day of this ISO week, Monday first, kept fresh as events change. */
+function useWeekDays(d: Date, enabled: boolean): { date: string; minutes: number }[] | null {
   const monday = new Date(d.getFullYear(), d.getMonth(), d.getDate() - ((d.getDay() + 6) % 7))
   const from = localDate(monday)
   const to = localDate(new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 7))
-  const [minutes, setMinutes] = useState<number | null>(null)
+  const [days, setDays] = useState<{ date: string; minutes: number }[] | null>(null)
   useEffect(() => {
     if (!enabled) return
     const load = () =>
       api.get<Record<string, number>>(`/api/hours?from=${from}&to=${to}`).then(
-        (days) => setMinutes(Object.values(days).reduce((a, b) => a + b, 0)),
+        (byDay) => {
+          const [y, m, dd] = from.split('-').map(Number)
+          setDays(
+            Array.from({ length: 7 }, (_, i) => {
+              const date = localDate(new Date(y, m - 1, dd + i))
+              return { date, minutes: byDay[date] ?? 0 }
+            }),
+          )
+        },
         () => {},
       )
     load()
@@ -68,13 +76,34 @@ function useWeekMinutes(d: Date, enabled: boolean): number | null {
       off()
     }
   }, [from, to, enabled])
-  return minutes
+  return days
+}
+
+/** Seven small bars, Monday to Sunday: the week's booked hours at a glance. A full bar is eight hours. */
+function WeekStrip({ days, today }: { days: { date: string; minutes: number }[]; today: string }) {
+  return (
+    <span className="week-strip" aria-hidden="true">
+      {days.map(({ date, minutes }) => {
+        const when = date < today ? 'past' : date === today ? 'today' : 'future'
+        const weekday = new Date(`${date}T12:00`).toLocaleDateString('en-GB', { weekday: 'short' })
+        return (
+          <span key={date} className={`week-day ${when}`} title={`${weekday} ${minutes > 0 ? `${formatHours(minutes)} h` : '–'}`}>
+            <span className="week-track">
+              <span className="week-bar" style={{ height: `${Math.min(100, (minutes / 480) * 100)}%` }} />
+            </span>
+            <span className="week-letter">{weekday.slice(0, 1)}</span>
+          </span>
+        )
+      })}
+    </span>
+  )
 }
 
 /** Today's date, set like the corner of a pocket diary page, with this week's booked hours. */
 function DateStamp({ large }: { large?: boolean }) {
   const d = useToday()
-  const week = useWeekMinutes(d, !large)
+  const days = useWeekDays(d, !large)
+  const week = days && days.reduce((a, b) => a + b.minutes, 0)
   const Tag = large ? 'div' : 'a'
   return (
     <Tag className={`stamp ${large ? 'large' : ''}`} {...(large ? {} : { href: '#/calendar', 'aria-label': `Today, ${d.toLocaleDateString('en-GB', { dateStyle: 'full' })}. Open the calendar.` })}>
@@ -86,6 +115,7 @@ function DateStamp({ large }: { large?: boolean }) {
         </span>
         {week !== null && <span className="stamp-hours">{week > 0 ? `${formatHours(week)} h booked this week` : 'No hours booked this week'}</span>}
       </span>
+      {days && <WeekStrip days={days} today={localDate(d)} />}
     </Tag>
   )
 }
