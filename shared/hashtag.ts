@@ -1,10 +1,17 @@
-// Project hashtags in event titles: the hashtag in a Bookkeeping event's title is
-// the booking. Matching is case-insensitive, and a hashtag must start the title or
-// follow whitespace, so `a#acme` and URLs with fragments do not count.
+// Project hashtags in events: a hashtag in the title or the description is the
+// booking. Matching is case-insensitive, and a hashtag must start the text or
+// follow whitespace, so `a#acme` and URLs with fragments do not count. Google
+// keeps descriptions as HTML, so a tag may also sit right inside a tag (`<p>#acme</p>`).
 
 export const HASHTAG_RE = /^[a-z0-9_-]{1,32}$/
 
-const FIND = /(^|\s)#([a-z0-9_-]{1,32})(?=$|[\s.,;:!?)\]])/gi
+const BEFORE = '(^|[\\s>])'
+const AFTER = '(?=$|[\\s.,;:!?)\\]<&])'
+const FIND = new RegExp(`${BEFORE}#([a-z0-9_-]{1,32})${AFTER}`, 'gi')
+
+function tagRe(tag: string): RegExp {
+  return new RegExp(`${BEFORE}#${escape(tag)}${AFTER}`, 'gi')
+}
 
 /** Every hashtag in the text, lower-cased, in order, without duplicates. */
 export function hashtags(text: string): string[] {
@@ -36,10 +43,30 @@ export function parseBooking(title: string, known: Iterable<string>): Booking {
 export function removeHashtags(title: string, tags: Iterable<string>): string {
   let out = title
   for (const tag of tags) {
-    const re = new RegExp(`(^|\\s)#${escape(tag)}(?=$|[\\s.,;:!?)\\]])`, 'gi')
-    out = out.replace(re, '$1')
+    out = out.replace(tagRe(tag), '$1')
   }
   return out.replace(/\s{2,}/g, ' ').trim()
+}
+
+/** What an event books: the hashtags of its title and its description together. */
+export function parseEventBooking(title: string, description: string, known: Iterable<string>): Booking {
+  return parseBooking(`${title}\n${description}`, known)
+}
+
+/** Removes hashtags from a description, keeping its lines and markup as they are. */
+export function removeHashtagsKeepLayout(text: string, tags: Iterable<string>): string {
+  let out = text
+  for (const tag of tags) out = out.replace(tagRe(tag), '$1')
+  return out.replace(/([^\s]) {2,}/g, '$1 ').replace(/ +(\n|$)/g, '$1')
+}
+
+/**
+ * The title and description booked to `tag` (or to nothing): every known project
+ * hashtag leaves the description, and the title carries the one booked.
+ */
+export function setEventBooking(title: string, description: string, tag: string | null, known: Iterable<string>): { title: string; description: string } {
+  const list = [...known]
+  return { title: setBooking(title, tag, list), description: removeHashtagsKeepLayout(description, list) }
 }
 
 /**
@@ -55,8 +82,7 @@ export function setBooking(title: string, tag: string | null, known: Iterable<st
 
 /** Replaces hashtag `from` with `to`, keeping its place in the title. */
 export function renameHashtag(title: string, from: string, to: string): string {
-  const re = new RegExp(`(^|\\s)#${escape(from)}(?=$|[\\s.,;:!?)\\]])`, 'gi')
-  return title.replace(re, `$1#${to.toLowerCase()}`)
+  return title.replace(tagRe(from), `$1#${to.toLowerCase()}`)
 }
 
 function escape(s: string): string {

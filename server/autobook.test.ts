@@ -142,3 +142,27 @@ describe('booking from planner', () => {
     await expect(bookEvent(ctx, userId, copy, null)).rejects.toThrow(/follows its source/)
   })
 })
+
+describe('hashtags in the description', () => {
+  it('books from the description; the copy carries the tag in its title', async () => {
+    g.external(PRIMARY, { id: 'a', summary: 'Coding', description: '<p>Refactoring</p><p>#acme</p>', start: t('2026-11-02T09:00:00+02:00'), end: t('2026-11-02T11:00:00+02:00'), organizer: { self: true } })
+    await syncAccount(ctx, 1)
+    await autoBook(ctx, userId)
+    const copy = get<{ summary: string; description: string }>(db, 'SELECT e.summary, e.description FROM events e JOIN calendars c ON c.id = e.calendar_id WHERE c.is_bookkeeping = 1')!
+    expect(copy).toEqual({ summary: 'Coding #acme', description: '<p>Refactoring</p><p></p>' })
+    const { report } = await import('./reports.ts')
+    const { EXACT } = await import('../shared/rounding.ts')
+    expect(report(db, userId, '2026-11', EXACT).projects.map((p) => [p.hashtag, p.minutes])).toEqual([['acme', 120]])
+    // Picking another project in planner moves the tag into the title.
+    const { bookEvent } = await import('./calendar.ts')
+    const tasenor = get<{ id: number }>(db, "SELECT id FROM projects WHERE hashtag = 'tasenor'")!.id
+    await bookEvent(ctx, userId, get<{ id: number }>(db, "SELECT id FROM events WHERE google_event_id = 'a'")!.id, tasenor)
+    expect(g.cals.get(PRIMARY)!.events.get('a')).toMatchObject({ summary: 'Coding #tasenor', description: '<p>Refactoring</p><p></p>' })
+  })
+
+  it('counts a title and description with different project tags as a conflict', async () => {
+    g.external(PRIMARY, { id: 'a', summary: 'Coding #acme', description: 'for #tasenor', start: t('2026-11-02T09:00:00+02:00'), end: t('2026-11-02T11:00:00+02:00') })
+    await syncAccount(ctx, 1)
+    expect((await autoBook(ctx, userId)).created).toBe(0)
+  })
+})

@@ -3,7 +3,7 @@
 // against a stale etag gets a 412 from Google: the event is fetched again and the
 // user sees the newer version (Google wins; nothing is merged).
 
-import { parseBooking, setBooking } from '../shared/hashtag.ts'
+import { parseEventBooking, removeHashtagsKeepLayout, setBooking, setEventBooking } from '../shared/hashtag.ts'
 import { monthOf, REPORT_TZ } from '../shared/time.ts'
 import type { Calendar, Occurrence } from '../shared/types.ts'
 import { all, type Db, get } from './db.ts'
@@ -91,7 +91,7 @@ export function occurrences(db: Db, userId: number, from: Date, to: Date, onlySe
 
   const out: Occurrence[] = []
   const make = (ev: EventRow, cal: CalendarRow, start: string, end: string, expanded: boolean): Occurrence => {
-    const booking = parseBooking(ev.summary, known)
+    const booking = parseEventBooking(ev.summary, ev.description, known)
     const bk = cal.is_bookkeeping === 1
     const key = expanded ? sourceKey(cal, ev, start) : sourceKey(cal, ev)
     return {
@@ -141,14 +141,14 @@ export function occurrences(db: Db, userId: number, from: Date, to: Date, onlySe
 /** Unknown hashtags in the user's Bookkeeping events, so projects can be made for them. */
 export function unknownHashtags(db: Db, userId: number): { hashtag: string; count: number }[] {
   const known = knownHashtags(db, userId)
-  const rows = all<{ summary: string }>(
+  const rows = all<{ summary: string; description: string }>(
     db,
-    `SELECT e.summary FROM events e JOIN calendars c ON c.id = e.calendar_id JOIN google_accounts a ON a.id = c.google_account_id
-     WHERE a.user_id = ? AND c.is_bookkeeping = 1 AND e.status != 'cancelled' AND e.summary LIKE '%#%'`,
+    `SELECT e.summary, e.description FROM events e JOIN calendars c ON c.id = e.calendar_id JOIN google_accounts a ON a.id = c.google_account_id
+     WHERE a.user_id = ? AND c.is_bookkeeping = 1 AND e.status != 'cancelled' AND (e.summary LIKE '%#%' OR e.description LIKE '%#%')`,
     userId,
   )
   const counts = new Map<string, number>()
-  for (const r of rows) for (const t of parseBooking(r.summary, known).unknown) counts.set(t, (counts.get(t) ?? 0) + 1)
+  for (const r of rows) for (const t of parseEventBooking(r.summary, r.description, known).unknown) counts.set(t, (counts.get(t) ?? 0) + 1)
   return [...counts].map(([hashtag, count]) => ({ hashtag, count })).sort((a, b) => b.count - a.count)
 }
 
@@ -328,7 +328,7 @@ export async function deleteEvent(ctx: Ctx, userId: number, eventId: number, occ
   const api = ctx.apiFor(t.cal.google_account_id)
   const id = t.ev.recurrence && occurrenceStart && scope !== 'series' ? await instanceId(ctx, t, occurrenceStart) : t.ev.google_event_id
   await api.deleteEvent(t.cal.google_calendar_id, id)
-  if (t.cal.is_bookkeeping === 1 && parseBooking(t.ev.summary, knownHashtags(db, userId)).kind === 'booked') {
+  if (t.cal.is_bookkeeping === 1 && parseEventBooking(t.ev.summary, t.ev.description, knownHashtags(db, userId)).kind === 'booked') {
     ctx.notify('info', `Booked event "${t.ev.summary}" (${occurrenceStart ?? t.ev.start}) was deleted in planner.`, 'Bookkeeping entry removed')
   }
   await afterWrite(ctx, t.cal, undefined)
@@ -353,8 +353,13 @@ export async function bookEvent(ctx: Ctx, userId: number, eventId: number, proje
     throw new Invalid('this booking follows its source event: change the hashtag in the original event instead')
   }
   const tag = projectId ? projectOf(db, userId, projectId).hashtag : null
-  const summary = setBooking(t.ev.summary, tag, knownHashtags(db, userId))
-  await updateEvent(ctx, userId, eventId, { title: summary, occurrenceStart, scope: occurrenceStart ? 'instance' : undefined })
+  const next = setEventBooking(t.ev.summary, t.ev.description, tag, knownHashtags(db, userId))
+  await updateEvent(ctx, userId, eventId, {
+    title: next.title,
+    ...(next.description !== t.ev.description ? { description: next.description } : {}),
+    occurrenceStart,
+    scope: occurrenceStart ? 'instance' : undefined,
+  })
   ctx.notify('info', `"${t.ev.summary}" (${occurrenceStart ?? t.ev.start}) ${tag ? `booked to #${tag}` : 'unbooked'}.`)
 }
 
@@ -394,6 +399,8 @@ export async function sendToBookkeeping(ctx: Ctx, userId: number, eventId: numbe
     if (bk.google_account_id !== t.cal.google_account_id) throw new Invalid('Google moves events only within one account; copy this one instead')
     const api = ctx.apiFor(t.cal.google_account_id)
     const body: Partial<GEvent> = { summary }
+    const description = removeHashtagsKeepLayout(t.ev.description, known)
+    if (description !== t.ev.description) body.description = description
     if (input.minutes) body.extendedProperties = { private: { planner_minutes: String(Math.round(input.minutes)) } }
     await patch(ctx, t, t.ev.google_event_id, body, t.ev.etag ?? undefined)
     const moved = await api.moveEvent(t.cal.google_calendar_id, t.ev.google_event_id, bk.google_calendar_id)
@@ -410,7 +417,7 @@ export async function sendToBookkeeping(ctx: Ctx, userId: number, eventId: numbe
     t.ev.all_day === 1 ? { start: { date: start }, end: { date: end } } : timeBody({ start, end, allDay: false }, t.ev.time_zone ?? REPORT_TZ)
   const reply = await api.insertEvent(bk.google_calendar_id, {
     summary,
-    description: t.ev.description,
+    description: removeHashtagsKeepLayout(t.ev.description, known),
     location: t.ev.location,
     ...time,
     extendedProperties: { private: priv },

@@ -1,5 +1,5 @@
-// Automatic booking: an event in one of the user's own calendars whose title has
-// exactly one known project hashtag is copied to Bookkeeping, and the copy then
+// Automatic booking: an event in one of the user's own calendars whose title or
+// description has exactly one known project hashtag is copied to Bookkeeping, and the copy then
 // follows its source. The copy is marked `planner_auto` in its private extended
 // properties next to `planner_source`, so copies sent by hand are never touched.
 //
@@ -13,7 +13,7 @@
 // - The run reconciles the whole state, so it is safe to repeat and catches up
 //   after any missed change.
 
-import { parseBooking, setBooking } from '../shared/hashtag.ts'
+import { parseEventBooking, setEventBooking } from '../shared/hashtag.ts'
 import { monthOf, monthRange, REPORT_TZ } from '../shared/time.ts'
 import { all, type Db, get, run } from './db.ts'
 import type { GEvent, GEventTime } from './google.ts'
@@ -48,7 +48,7 @@ function wanted(db: Db, userId: number, known: string[], horizon: Date): { wante
   const out = new Map<string, Wanted>()
   let skipped = 0
   for (const cal of sourceCalendars(db, userId)) {
-    const rows = all<EventRow>(db, "SELECT * FROM events WHERE calendar_id = ? AND status != 'cancelled' AND summary LIKE '%#%'", cal.id)
+    const rows = all<EventRow>(db, "SELECT * FROM events WHERE calendar_id = ? AND status != 'cancelled' AND (summary LIKE '%#%' OR description LIKE '%#%')", cal.id)
     const replaced = new Map<string, Set<string>>()
     for (const r of all<{ recurring_event_id: string; original_start: string }>(
       db,
@@ -60,15 +60,16 @@ function wanted(db: Db, userId: number, known: string[], horizon: Date): { wante
     }
     for (const ev of rows) {
       if (!ev.start || !ev.end) continue
-      const booking = parseBooking(ev.summary, known)
+      const booking = parseEventBooking(ev.summary, ev.description, known)
       if (booking.kind !== 'booked') continue
       if (ev.all_day === 1) {
         skipped++
         continue
       }
+      const next = setEventBooking(ev.summary, ev.description, booking.hashtag, known)
       const base = {
-        summary: setBooking(ev.summary, booking.hashtag, known),
-        description: ev.description,
+        summary: next.title,
+        description: next.description,
         location: ev.location,
         timeZone: ev.time_zone ?? REPORT_TZ,
       }

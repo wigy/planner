@@ -10,8 +10,8 @@ A small self-hosted web app for a household or a one-person company:
   create, move, resize, edit and delete, including one occurrence or the whole series of a
   recurring event.
 - **Time bookkeeping.** Projects have a full title and a hashtag, for example *Acme Works* and
-  `#acme`. The hashtag in the title of an event in your **Bookkeeping** Google calendar
-  books that event to the project, in both directions: booking in planner writes the hashtag,
+  `#acme`. The hashtag in the title or description of an event in your **Bookkeeping**
+  Google calendar books that event to the project, in both directions: booking in planner writes the hashtag,
   and typing it in Google Calendar on your phone books the event. Any event in another calendar
   can be *sent to Bookkeeping*: copied (the default, and the only option for other people's
   meetings) or, for your own events, moved. Reports per project and per month, with rounding
@@ -24,12 +24,14 @@ the addresses in `PLANNER_ALLOWED_EMAILS` can log in.
 
 - Only the **Bookkeeping** calendar counts. planner creates it in your Google account when you
   first need it, or adopts an existing calendar you own that is called `Bookkeeping`.
-- A title with exactly one known project hashtag is booked. A title with two project hashtags
-  books nothing; it is shown in red and logged as a warning. An unknown hashtag is listed under
+- The title and the description count together: exactly one known project hashtag between them
+  books the event (the same tag in both is fine). Two different project hashtags book nothing;
+  the event is shown in red and logged as a warning. When planner sets a booking, the hashtag
+  goes into the title and any project hashtags leave the description. An unknown hashtag is listed under
   Projects so a project can be created for it. A hashtag must start the title or follow a
   space, so `a#acme` and URL fragments do not count.
-- **Automatic booking.** An event in a calendar you own (not one shared with you) whose title
-  has exactly one known project hashtag is copied to Bookkeeping by itself, within seconds of
+- **Automatic booking.** An event in a calendar you own (not one shared with you) whose title or
+  description has exactly one known project hashtag is copied to Bookkeeping by itself, within seconds of
   the change reaching planner. The copy follows its source: moved or retitled, it is updated;
   the hashtag removed or the event deleted, the copy is deleted. A recurring series is copied
   occurrence by occurrence up to the end of the current month. All-day events are not copied,

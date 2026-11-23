@@ -7,7 +7,7 @@
 // that are lost.
 
 import { randomUUID } from 'node:crypto'
-import { parseBooking } from '../shared/hashtag.ts'
+import { parseEventBooking } from '../shared/hashtag.ts'
 import { monthOf } from '../shared/time.ts'
 import { all, type Db, get, now, run, tx } from './db.ts'
 import { type CalendarApi, GoneError, GoogleAuthError, type GCalendar, type GEvent, type GEventTime } from './google.ts'
@@ -108,7 +108,7 @@ export function storeEvent(ctx: Ctx, calendar: CalendarRow, ev: GEvent, defaultT
       // A deleted series takes its changed occurrences with it.
       run(db, 'DELETE FROM events WHERE calendar_id = ? AND recurring_event_id = ?', calendar.id, ev.id)
       if (bookkeeping && old.status !== 'cancelled') {
-        const booking = parseBooking(old.summary, knownHashtags(db, owner))
+        const booking = parseEventBooking(old.summary, old.description, knownHashtags(db, owner))
         if (booking.kind === 'booked') {
           const locked = isLocked(db, owner, old.start)
           ctx.notify(
@@ -161,13 +161,13 @@ export function storeEvent(ctx: Ctx, calendar: CalendarRow, ev: GEvent, defaultT
 
   if (bookkeeping && row.status !== 'cancelled') {
     const known = knownHashtags(db, owner)
-    const booking = parseBooking(row.summary, known)
-    const titleChanged = !old || old.summary !== row.summary
+    const booking = parseEventBooking(row.summary, row.description, known)
+    const titleChanged = !old || old.summary !== row.summary || old.description !== row.description
     if (booking.kind === 'conflict' && titleChanged) {
       ctx.notify('warning', `"${row.summary}" (${row.start}) has two project hashtags (${booking.hashtags.map((h) => `#${h}`).join(', ')}) and is not booked.`, 'Bookkeeping conflict')
     }
-    if (old && (old.summary !== row.summary || old.start !== row.start || old.end !== row.end)) {
-      const wasBooked = parseBooking(old.summary, known).kind === 'booked'
+    if (old && (old.summary !== row.summary || old.description !== row.description || old.start !== row.start || old.end !== row.end)) {
+      const wasBooked = parseEventBooking(old.summary, old.description, known).kind === 'booked'
       if ((wasBooked || booking.kind === 'booked') && (isLocked(db, owner, old.start) || isLocked(db, owner, row.start))) {
         ctx.notify('warning', `Booked event "${row.summary}" was changed in Google in a locked month (was "${old.summary}" ${old.start}–${old.end}, now ${row.start}–${row.end}).`, 'Locked month changed')
       }

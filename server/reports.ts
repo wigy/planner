@@ -2,7 +2,7 @@
 // event there whose title carries one known project hashtag is an entry. Time is
 // exact; rounding is applied here, as chosen for the report.
 
-import { parseBooking } from '../shared/hashtag.ts'
+import { parseEventBooking } from '../shared/hashtag.ts'
 import { applyRounding, describeRounding, type Rounding } from '../shared/rounding.ts'
 import { monthRange, REPORT_TZ, toWall } from '../shared/time.ts'
 import type { MonthSummary, Report, ReportEntry } from '../shared/types.ts'
@@ -61,7 +61,7 @@ function entries(db: Db, userId: number, month: string): { raw: Raw[]; problems:
   const raw: Raw[] = []
   const problems: Report['problems'] = []
   const add = (ev: EventRow, start: string, end: string) => {
-    const booking = parseBooking(ev.summary, known)
+    const booking = parseEventBooking(ev.summary, ev.description, known)
     if (booking.kind === 'conflict') {
       problems.push({ title: ev.summary, start, reason: `two project hashtags: ${booking.hashtags.map((h) => '#' + h).join(' ')}` })
       return

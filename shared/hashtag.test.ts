@@ -50,3 +50,11 @@ describe('renameHashtag', () => {
     expect(renameHashtag('a#acme #acme', 'acme', 'aw')).toBe('a#acme #aw')
   })
 })
+
+describe('descriptions', () => {
+  it('finds tags inside HTML and keeps the layout when removing them', async () => {
+    const { hashtags, removeHashtagsKeepLayout } = await import('./hashtag.ts')
+    expect(hashtags('<p>#Acme</p>&nbsp;x #b, https://x/y#d')).toEqual(['acme', 'b'])
+    expect(removeHashtagsKeepLayout('Work on\n<p>#acme</p>\nmore #acme here', ['acme'])).toBe('Work on\n<p></p>\nmore here')
+  })
+})
