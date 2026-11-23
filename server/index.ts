@@ -34,10 +34,11 @@ import { Forbidden, Invalid, NotFound, statusOf, Unauthorized } from './errors.t
 import { authUrl, exchangeCode, GoogleError, type OAuthConfig } from './google.ts'
 import { fakeGoogle } from './dev-fake.ts'
 import { makeNotifier } from './notify.ts'
+import { autoBook } from './autobook.ts'
 import { createProject, listProjects, updateProject } from './projects.ts'
 import { checkMonth, report, reportCsv, setLock, yearSummary } from './reports.ts'
 import { loadKey, signSession, signValue, verifySession, verifyValue } from './secrets.ts'
-import { type Ctx, ensureWatch, handlePush, syncAccount, syncAll } from './sync.ts'
+import { calendarOwner, type Ctx, ensureWatch, handlePush, syncAccount, syncAll } from './sync.ts'
 
 const root = resolve(import.meta.dirname, '..')
 const dataDir = resolve(process.env.PLANNER_DATA ?? join(root, 'data'))
@@ -63,6 +64,9 @@ const ctx: Ctx = {
   apiFor: fake ? () => fake : apiFactory(db, tokenKey, oauth),
   publicUrl,
   pushToken: createHmac('sha256', secret).update('google-push').digest('base64url'),
+  afterSync: (calendarId) => {
+    autoBook(ctx, calendarOwner(db, calendarId)).catch((err) => notify('info', `Automatic booking failed: ${String(err)}`))
+  },
 }
 
 const MAX_BODY = 1024 * 1024
@@ -305,8 +309,17 @@ async function api(req: IncomingMessage, res: ServerResponse, url: URL) {
 
   // ---- projects
   if (path === '/api/projects' && method === 'GET') return json(res, 200, listProjects(db, userId))
-  if (path === '/api/projects' && method === 'POST') return json(res, 200, createProject(db, userId, await body(req)))
-  if (seg[0] === 'projects' && seg.length === 2 && method === 'PATCH') return json(res, 200, await updateProject(ctx, userId, int(seg[1]), await body(req)))
+  if (path === '/api/projects' && method === 'POST') {
+    const project = createProject(db, userId, await body(req))
+    // Existing events with the new hashtag are booked in the background.
+    autoBook(ctx, userId).catch((err) => notify('info', `Automatic booking failed: ${String(err)}`))
+    return json(res, 200, project)
+  }
+  if (seg[0] === 'projects' && seg.length === 2 && method === 'PATCH') {
+    const result = await updateProject(ctx, userId, int(seg[1]), await body(req))
+    autoBook(ctx, userId).catch((err) => notify('info', `Automatic booking failed: ${String(err)}`))
+    return json(res, 200, result)
+  }
   if (path === '/api/hashtags/unknown' && method === 'GET') return json(res, 200, unknownHashtags(db, userId))
 
   // ---- reports

@@ -20,6 +20,8 @@ export type Ctx = {
   /** https://planner.example.com, for push notifications; none means poll only. */
   publicUrl?: string
   pushToken?: string
+  /** Called after a calendar other than Bookkeeping has synced; index.ts runs automatic booking from it. */
+  afterSync?: (calendarId: number) => void
 }
 
 export type CalendarRow = {
@@ -259,6 +261,7 @@ async function syncCalendarNow(ctx: Ctx, calendarId: number): Promise<void> {
         run(db, 'UPDATE calendars SET sync_token = ?, synced_at = ? WHERE id = ?', nextSyncToken ?? null, now(), calendarId)
       })
       if (full) ctx.notify('debug', `Full sync of "${cal.name}": ${changes.length} events.`)
+      if (cal.is_bookkeeping !== 1) ctx.afterSync?.(calendarId)
       return
     } catch (err) {
       if (err instanceof GoneError && attempt === 0) {

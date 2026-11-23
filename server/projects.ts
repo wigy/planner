@@ -44,7 +44,8 @@ export function createProject(db: Db, userId: number, input: ProjectInput): Proj
 
 /**
  * Updates a project. Changing its hashtag rewrites the title of every
- * Bookkeeping event that carries the old one, except in locked months.
+ * Bookkeeping event that carries the old one, except in locked months, and of
+ * the user's own events in their own calendars, which automatic booking copies.
  */
 export async function updateProject(ctx: Ctx, userId: number, id: number, input: ProjectInput): Promise<{ project: Project; rewritten: number; skipped: number }> {
   const { db } = ctx
@@ -69,7 +70,9 @@ export async function updateProject(ctx: Ctx, userId: number, id: number, input:
       db,
       `SELECT e.*, c.google_account_id AS account_id, c.google_calendar_id FROM events e
        JOIN calendars c ON c.id = e.calendar_id JOIN google_accounts a ON a.id = c.google_account_id
-       WHERE a.user_id = ? AND c.is_bookkeeping = 1 AND e.status != 'cancelled' AND e.summary LIKE ?`,
+       WHERE a.user_id = ? AND (c.is_bookkeeping = 1 OR (c.access_role = 'owner' AND e.organizer_self = 1))
+         AND e.status != 'cancelled' AND e.summary LIKE ?
+       ORDER BY c.is_bookkeeping`,
       userId, `%#${old.hashtag}%`,
     )
     for (const ev of rows) {
@@ -80,10 +83,15 @@ export async function updateProject(ctx: Ctx, userId: number, id: number, input:
         skipped++
         continue
       }
-      await patchQuiet(ctx, ev.account_id, ev.calendar_id, ev.google_calendar_id, ev.google_event_id, { summary: next })
-      rewritten++
+      try {
+        await patchQuiet(ctx, ev.account_id, ev.calendar_id, ev.google_calendar_id, ev.google_event_id, { summary: next })
+        rewritten++
+      } catch (err) {
+        skipped++
+        ctx.notify('info', `Renaming #${old.hashtag} in "${ev.summary}" failed: ${String(err)}`)
+      }
     }
-    ctx.notify('info', `Project "${title}": hashtag #${old.hashtag} renamed to #${hashtag}; ${rewritten} event titles rewritten, ${skipped} in locked months left as they were.`, 'Project hashtag renamed')
+    ctx.notify('info', `Project "${title}": hashtag #${old.hashtag} renamed to #${hashtag}; ${rewritten} event titles rewritten, ${skipped} left as they were (locked months or failures).`, 'Project hashtag renamed')
   }
   return { project: json(get<ProjectRow>(db, 'SELECT * FROM projects WHERE id = ?', id)!), rewritten, skipped }
 }

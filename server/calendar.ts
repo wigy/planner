@@ -344,6 +344,9 @@ export async function bookEvent(ctx: Ctx, userId: number, eventId: number, proje
   const { db } = ctx
   const t = target(db, userId, eventId)
   if (t.cal.is_bookkeeping !== 1) throw new Invalid('only Bookkeeping events are booked; send this one to Bookkeeping instead')
+  if (JSON.parse(t.ev.raw_json).extendedProperties?.private?.planner_auto === '1') {
+    throw new Invalid('this booking follows its source event: change the hashtag in the original event instead')
+  }
   const tag = projectId ? projectOf(db, userId, projectId).hashtag : null
   const summary = setBooking(t.ev.summary, tag, knownHashtags(db, userId))
   await updateEvent(ctx, userId, eventId, { title: summary, occurrenceStart, scope: occurrenceStart ? 'instance' : undefined })

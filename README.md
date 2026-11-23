@@ -28,8 +28,15 @@ the addresses in `PLANNER_ALLOWED_EMAILS` can log in.
   books nothing; it is shown in red and logged as a warning. An unknown hashtag is listed under
   Projects so a project can be created for it. A hashtag must start the title or follow a
   space, so `a#acme` and URL fragments do not count.
-- Renaming a project's hashtag rewrites the titles of its Bookkeeping events, except in locked
-  months.
+- **Automatic booking.** An event in a calendar you own (not one shared with you) whose title
+  has exactly one known project hashtag is copied to Bookkeeping by itself, within seconds of
+  the change reaching planner. The copy follows its source: moved or retitled, it is updated;
+  the hashtag removed or the event deleted, the copy is deleted. A recurring series is copied
+  occurrence by occurrence up to the end of the current month. All-day events are not copied,
+  since their hours are unknown, and locked months are never changed. Change the booking of an
+  automatic copy in its source event, not in Bookkeeping.
+- Renaming a project's hashtag rewrites the titles of its Bookkeeping events, and of your own
+  events in your own calendars, except in locked months.
 - A copy records its source in the event's private extended properties
   (`planner_source`), so the same event cannot be booked twice. An all-day event can be sent
   only with the hours entered by hand (`planner_minutes`).
