@@ -4,9 +4,9 @@
 // that no longer has one is moved back where it came from. There is only ever
 // the one event: nothing is copied.
 //
-// - Moving records the origin calendar in the event's private extended
-//   properties (`planner_origin`); without one, the event goes back to the
-//   primary calendar of the Bookkeeping account.
+// - Moving records the origin calendar in the moved_events table (Google drops
+//   private extended properties when an event changes calendar); without one,
+//   the event goes back to the primary calendar of the Bookkeeping account.
 // - Google moves only events the user organizes, within one account, and a
 //   series only as a whole. Someone else's meeting stays where it is, and the
 //   user is told once; Send to Bookkeeping copies it on request.
@@ -20,7 +20,7 @@
 
 import { parseEventBooking } from '../shared/hashtag.ts'
 import { monthOf } from '../shared/time.ts'
-import { all, type Db, get, run } from './db.ts'
+import { all, type Db, get, now, run } from './db.ts'
 import type { GEvent } from './google.ts'
 import { type CalendarRow, type Ctx, ensureBookkeeping, type EventRow, storeEvent, syncCalendar } from './sync.ts'
 
@@ -49,6 +49,13 @@ function bookkeeping(db: Db, userId: number): CalendarRow | undefined {
 
 function priv(ev: EventRow): Record<string, string> {
   return (JSON.parse(ev.raw_json) as GEvent).extendedProperties?.private ?? {}
+}
+
+/** Remembers which calendar an event was moved into Bookkeeping from. */
+export function recordOrigin(db: Db, accountId: number, googleEventId: string, originCalendar: string) {
+  run(db, `INSERT INTO moved_events (google_account_id, google_event_id, origin_calendar, moved_at) VALUES (?, ?, ?, ?)
+    ON CONFLICT (google_account_id, google_event_id) DO UPDATE SET origin_calendar = excluded.origin_calendar, moved_at = excluded.moved_at`,
+    accountId, googleEventId, originCalendar, now())
 }
 
 const told = new Set<string>()
@@ -122,10 +129,10 @@ async function reconcile(ctx: Ctx, userId: number): Promise<AutoBookResult> {
           continue
         }
         const api = ctx.apiFor(cal.google_account_id)
-        await api.patchEvent(cal.google_calendar_id, ev.google_event_id, { extendedProperties: { private: { planner_origin: cal.google_calendar_id } } })
         const moved = await api.moveEvent(cal.google_calendar_id, ev.google_event_id, bk.google_calendar_id)
         run(db, 'DELETE FROM events WHERE calendar_id = ? AND (google_event_id = ? OR recurring_event_id = ?)', cal.id, ev.google_event_id, ev.google_event_id)
         storeEvent(ctx, bk, moved)
+        recordOrigin(db, cal.google_account_id, ev.google_event_id, cal.google_calendar_id)
         touched.add(cal.id).add(bk.id)
         result.movedIn++
       } catch (err) {
@@ -144,7 +151,8 @@ async function reconcile(ctx: Ctx, userId: number): Promise<AutoBookResult> {
       const booking = parseEventBooking(ev.summary, ev.description, known)
       if (booking.kind !== 'none') continue
       const key = `${bk.google_calendar_id}/${ev.google_event_id}`
-      const origin = own.find((c) => c.google_calendar_id === p.planner_origin && c.google_account_id === bk!.google_account_id) ?? primary
+      const from = get<{ origin_calendar: string }>(db, 'SELECT origin_calendar FROM moved_events WHERE google_account_id = ? AND google_event_id = ?', bk.google_account_id, ev.google_event_id)
+      const origin = own.find((c) => c.google_calendar_id === from?.origin_calendar && c.google_account_id === bk!.google_account_id) ?? primary
       if (!origin) continue
       if (locked(ev)) {
         tell(`locked-out:${key}`, 'warning', `"${ev.summary}" (${ev.start}) lost its project hashtag, but its month is locked, so it stays in Bookkeeping.`)
@@ -156,6 +164,7 @@ async function reconcile(ctx: Ctx, userId: number): Promise<AutoBookResult> {
         const moved = await api.moveEvent(bk.google_calendar_id, ev.google_event_id, origin.google_calendar_id)
         run(db, 'DELETE FROM events WHERE calendar_id = ? AND (google_event_id = ? OR recurring_event_id = ?)', bk.id, ev.google_event_id, ev.google_event_id)
         storeEvent(ctx, origin, moved)
+        run(db, 'DELETE FROM moved_events WHERE google_account_id = ? AND google_event_id = ?', bk.google_account_id, ev.google_event_id)
         touched.add(bk.id).add(origin.id)
         result.movedOut++
       } catch (err) {

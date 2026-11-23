@@ -9,6 +9,7 @@ import type { Calendar, Occurrence } from '../shared/types.ts'
 import { all, type Db, get } from './db.ts'
 import { Conflict, Forbidden, Invalid, NotFound } from './errors.ts'
 import { type GEvent, type GEventTime, PreconditionFailed } from './google.ts'
+import { recordOrigin } from './autobook.ts'
 import { expand } from './recurrence.ts'
 import { type CalendarRow, type Ctx, ensureBookkeeping, type EventRow, knownHashtags, storeEvent, syncCalendar } from './sync.ts'
 
@@ -410,12 +411,13 @@ export async function sendToBookkeeping(ctx: Ctx, userId: number, eventId: numbe
     if (t.ev.organizer_self !== 1 || !writable(t.cal)) throw new Forbidden('only your own events can be moved; copy this one instead')
     if (bk.google_account_id !== t.cal.google_account_id) throw new Invalid('Google moves events only within one account; copy this one instead')
     const api = ctx.apiFor(t.cal.google_account_id)
-    const body: Partial<GEvent> = { summary, description: tagged.description }
-    const p: Record<string, string> = { planner_origin: t.cal.google_calendar_id }
-    if (input.minutes) p.planner_minutes = String(Math.round(input.minutes))
-    body.extendedProperties = { private: p }
-    await patch(ctx, t, t.ev.google_event_id, body, t.ev.etag ?? undefined)
-    const moved = await api.moveEvent(t.cal.google_calendar_id, t.ev.google_event_id, bk.google_calendar_id)
+    await patch(ctx, t, t.ev.google_event_id, { summary, description: tagged.description }, t.ev.etag ?? undefined)
+    let moved = await api.moveEvent(t.cal.google_calendar_id, t.ev.google_event_id, bk.google_calendar_id)
+    recordOrigin(db, t.cal.google_account_id, t.ev.google_event_id, t.cal.google_calendar_id)
+    // Private extended properties belong to one calendar's copy, so the hours go on after the move.
+    if (input.minutes) {
+      moved = await api.patchEvent(bk.google_calendar_id, moved.id, { extendedProperties: { private: { planner_minutes: String(Math.round(input.minutes)) } } })
+    }
     await afterWrite(ctx, t.cal, undefined)
     await afterWrite(ctx, bk, moved)
     ctx.notify('info', `Moved "${t.ev.summary}" (${start}) from "${t.cal.name}" to Bookkeeping as #${project.hashtag}.`)

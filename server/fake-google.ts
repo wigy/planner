@@ -165,7 +165,12 @@ export class FakeGoogle implements CalendarApi {
       this.touch(from, { ...ex, status: 'cancelled' })
       this.touch(this.cal(destination), { ...structuredClone(ex) })
     }
-    const moved = { ...structuredClone(ev), status: 'confirmed' }
+    // Google drops private extended properties: they belong to one calendar's copy.
+    const moved: GEvent = { ...structuredClone(ev), status: 'confirmed' }
+    if (moved.extendedProperties?.private) {
+      const { private: _, ...rest } = moved.extendedProperties
+      moved.extendedProperties = rest
+    }
     this.touch(this.cal(destination), moved)
     return structuredClone(moved)
   }

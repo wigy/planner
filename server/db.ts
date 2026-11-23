@@ -122,6 +122,16 @@ CREATE TABLE IF NOT EXISTS ticket_events (
   payload_json TEXT NOT NULL DEFAULT '{}',
   at TEXT NOT NULL
 );
+-- Where planner moved an event into Bookkeeping from, to move it back when its
+-- hashtag goes. Kept here because Google drops private extended properties
+-- when an event changes calendar. A moved event keeps its Google id.
+CREATE TABLE IF NOT EXISTS moved_events (
+  google_account_id INTEGER NOT NULL REFERENCES google_accounts(id) ON DELETE CASCADE,
+  google_event_id TEXT NOT NULL,
+  origin_calendar TEXT NOT NULL,
+  moved_at TEXT NOT NULL,
+  PRIMARY KEY (google_account_id, google_event_id)
+);
 CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
