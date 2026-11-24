@@ -57,6 +57,13 @@ the addresses in `PLANNER_ALLOWED_EMAILS` can log in.
 - Urgent cards (P1 and P2) grey out step by step after a month, three months and half a year
   without changes.
 - The colours follow the system's light or dark setting.
+- Bookkeeping events have a dark left edge, and the Bookkeeping calendar is listed apart
+  from the account calendars.
+- **Exercises**, when an exercise feed is configured: a read-only calendar of your workouts
+  from [Rautaloki](https://github.com/wigy/rautaloki), fetched live and never stored. Done
+  workouts are solid green on their day; the lifting still to do is one dashed bar per week,
+  this week and the weeks the running cycles have left. Its own section in the sidebar
+  switches it on and off (kept in the browser).
 - Keyboard: `b` `c` `p` `r` open the board, calendar, projects and reports; `n` adds a card to
   P1; with a card open, `1`–`4` move it to P1–P4 and `d` to Done; in the calendar `t` goes to
   today, `←` `→` move back and forward, and `m` `w` `d` pick month, week or day. `?` lists them.
@@ -92,9 +99,27 @@ lost on restart.
 | `PLANNER_DATA` | the data directory (default `./data`) |
 | `NOTIFY_URL` | optional event log endpoint: each sync failure, conflict, archive run and login is POSTed there as `{source, level, text, title}` |
 | `PLANNER_POLL_SECONDS` | fallback poll interval (default 300) |
+| `EXERCISE_FEED_URL`, `EXERCISE_FEED_KEY` | optional: the exercise feed for the Exercises calendar, e.g. `http://rautaloki:8910/api/feed`, and the shared key it expects |
 | `PORT`, `HOST` | default `8920`, `0.0.0.0` |
 
 Generate a key with `openssl rand -base64 32`.
+
+### Exercise feed
+
+A server-to-server JSON protocol, so any app can fill the Exercises calendar
+(`server/exercises.ts`):
+
+```
+GET <EXERCISE_FEED_URL>?email=<planner user's email>&from=YYYY-MM-DD&to=YYYY-MM-DD
+Authorization: Bearer <EXERCISE_FEED_KEY>
+
+200 {"name": "Exercises", "events": [{"id", "title", "start", "end", "status", "kind", "description"}]}
+404 the email is not known there (an empty calendar)
+```
+
+Events are all-day: `start` is the first day and `end` the day after the last (exclusive).
+`status` is `done` or `planned`; planned events of kind `lift` with the same days are
+merged into one bar. Malformed events are dropped, and answers are cached for a minute.
 
 ### Google Cloud setup
 

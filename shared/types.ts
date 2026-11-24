@@ -13,6 +13,8 @@ export type Me = User & {
   accounts: { id: number; email: string; status: string }[]
   others: User[]
   googleConfigured: boolean
+  /** An exercise feed is configured (EXERCISE_FEED_URL), so the Exercises calendar exists. */
+  exercisesConfigured: boolean
 }
 
 export type Label = { id: number; name: string; color: string }
@@ -110,3 +112,17 @@ export type Report = {
 }
 
 export type MonthSummary = { month: string; byProject: Record<number, number>; totalMinutes: number }
+
+/**
+ * One event of an exercise feed (Rautaloki's GET /api/feed). Always all-day: start is the
+ * first day and end the day after the last, both YYYY-MM-DD. Read-only in planner.
+ */
+export type ExerciseEvent = {
+  id: string
+  title: string
+  start: string
+  end: string
+  status: 'done' | 'planned'
+  kind: string
+  description: string
+}

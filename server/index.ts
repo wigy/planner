@@ -14,6 +14,7 @@
 //            POST /api/events/:id/book {projectId|null}
 //            POST /api/events/:id/send {projectId, mode, occurrenceStart?, minutes?}
 //            POST /api/sync
+//            GET  /api/exercises?from=&to=     (YYYY-MM-DD; the Exercises feed, 404 if none)
 // Projects:  GET|POST /api/projects, PATCH /api/projects/:id, GET /api/hashtags/unknown
 // Reports:   GET  /api/reports/:month?project=&step=&mode=&apply=[&format=csv]
 //            GET  /api/reports/year/:year, PUT /api/locks/:month {locked}
@@ -31,6 +32,7 @@ import { acceptTokens, accountsOf, allUsers, apiFactory, getUser } from './accou
 import { addComment, archiveDone, archivedTickets, boardTickets, createLabel, createTicket, deleteLabel, listLabels, restoreTicket, ticketDetail, updateLabel, updateTicket } from './board.ts'
 import { bookEvent, calendarJson, createEvent, deleteEvent, occurrences, sendToBookkeeping, unknownHashtags, updateEvent, userCalendars } from './calendar.ts'
 import { openDb, run } from './db.ts'
+import { exerciseFeed, FeedError } from './exercises.ts'
 import { Forbidden, Invalid, NotFound, statusOf, Unauthorized } from './errors.ts'
 import { authUrl, exchangeCode, GoogleError, type OAuthConfig } from './google.ts'
 import { fakeGoogle } from './dev-fake.ts'
@@ -58,6 +60,7 @@ const oauth: OAuthConfig | null =
     ? { clientId: process.env.GOOGLE_CLIENT_ID, clientSecret: process.env.GOOGLE_CLIENT_SECRET, redirectUri: `${publicUrl}/auth/google/callback` }
     : null
 const notify = makeNotifier(process.env.NOTIFY_URL)
+const exercises = process.env.EXERCISE_FEED_URL ? exerciseFeed({ url: process.env.EXERCISE_FEED_URL, key: process.env.EXERCISE_FEED_KEY ?? '' }) : null
 const fake = process.env.PLANNER_FAKE_GOOGLE ? fakeGoogle(db, process.env.PLANNER_FAKE_GOOGLE) : null
 const ctx: Ctx = {
   db,
@@ -203,7 +206,7 @@ async function api(req: IncomingMessage, res: ServerResponse, url: URL) {
 
   if (path === '/api/me' && method === 'GET') {
     const user = getUser(db, userId)!
-    const out: Me = { ...user, accounts: accountsOf(db, userId), others: allUsers(db).filter((u) => u.id !== userId), googleConfigured: !!oauth }
+    const out: Me = { ...user, accounts: accountsOf(db, userId), others: allUsers(db).filter((u) => u.id !== userId), googleConfigured: !!oauth, exercisesConfigured: !!exercises }
     return json(res, 200, out)
   }
 
@@ -302,6 +305,13 @@ async function api(req: IncomingMessage, res: ServerResponse, url: URL) {
       })
       return json(res, 200, { id: newId })
     }
+  }
+  if (path === '/api/exercises' && method === 'GET') {
+    if (!exercises) throw new NotFound()
+    const from = url.searchParams.get('from') ?? ''
+    const to = url.searchParams.get('to') ?? ''
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || to <= from) throw new Invalid('from and to required')
+    return json(res, 200, await exercises(getUser(db, userId)!.email, from, to))
   }
   if (path === '/api/sync' && method === 'POST') {
     for (const a of accountsOf(db, userId)) await syncAccount(ctx, a.id)
@@ -407,6 +417,7 @@ const server = createServer(async (req, res) => {
       status = 502
       message = `Google: ${err.message}`
     }
+    if (err instanceof FeedError) status = 502
     if (status === 500 || status === 502) console.error(new Date().toISOString(), req.method, url.pathname, err)
     if (!res.headersSent) json(res, status, { error: message || res.statusMessage })
     else res.end()

@@ -1021,6 +1021,16 @@ kbd {
 .cal-item .pill {
   margin-left: auto;
 }
+/* Bookkeeping and Exercises are not ordinary calendars: set apart below the accounts. */
+.cal-group.special {
+  border-top: 1px dashed var(--line-strong);
+  padding-top: 14px;
+}
+.cal-dot.ex-dot {
+  background: var(--p3);
+  border-color: var(--p3);
+  border-radius: 50%;
+}
 .legend p {
   margin: 6px 0;
   font-size: 13px;
@@ -1171,6 +1181,39 @@ kbd {
   box-shadow:
     0 0 0 1px var(--sheet),
     inset 0 0 0 2px var(--danger) !important;
+}
+
+/* Bookkeeping events carry a dark left edge, so booked hours read apart from plain meetings. */
+.fc .ev-bk,
+.ev-sample.ev-bk {
+  box-shadow: inset 4px 0 0 rgba(0, 0, 0, 0.32);
+}
+.ev-sample.ev-bk {
+  padding-left: 9px;
+}
+
+/* Exercises from Rautaloki: done is solid green, still to do is a dashed outline. */
+.fc .fc-event.ev-ex,
+.ev-sample.ev-ex {
+  border-radius: 999px;
+}
+.fc .fc-event.ev-ex-done,
+.ev-sample.ev-ex-done {
+  background: var(--p3);
+  border-color: var(--p3);
+}
+.fc .fc-event.ev-ex-planned,
+.ev-sample.ev-ex-planned {
+  background: color-mix(in srgb, var(--p3) 10%, transparent);
+  border: 1.5px dashed var(--p3);
+  color: var(--p3);
+}
+.fc .fc-event.ev-ex-planned .fc-event-main {
+  color: var(--p3);
+  font-weight: 600;
+}
+.fc .fc-event.ev-ex .fc-event-main {
+  padding: 0 8px;
 }
 
 /* Booked events: the project's hashtag in the corner. */
@@ -1505,4 +1548,10 @@ tr.current td {
     animation: none !important;
     transition: none !important;
   }
+}
+.ex-list {
+  padding-left: 1.1em;
+}
+.ex-list li {
+  margin: 8px 0;
 }
