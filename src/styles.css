@@ -1197,10 +1197,17 @@ kbd {
 .ev-sample.ev-ex {
   border-radius: 999px;
 }
+/* A fixed dark green in both themes, so the white text always reads. */
 .fc .fc-event.ev-ex-done,
 .ev-sample.ev-ex-done {
-  background: var(--p3);
-  border-color: var(--p3);
+  background: #23704d;
+  border-color: #23704d;
+}
+.fc .fc-event.ev-ex-done .fc-event-main,
+.fc .fc-event.ev-ex-done .fc-event-time,
+.fc .fc-event.ev-ex-done .fc-event-title,
+.ev-sample.ev-ex-done {
+  color: #fff;
 }
 .fc .fc-event.ev-ex-planned,
 .ev-sample.ev-ex-planned {
