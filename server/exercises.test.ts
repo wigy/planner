@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { exerciseFeed, FeedError } from './exercises.ts'
 
 const cfg = { url: 'http://feed.test/api/feed', key: 'k3y' }
-const event = { id: 'c1/4', title: 'Deadlift 5 x 5 · 62.5 kg', start: '2026-11-23', end: '2026-11-30', status: 'planned', kind: 'lift', description: '' }
+const event = { id: 'c1/4', title: 'Deadlift 5 x 5 · 62.5 kg', allDay: true, start: '2026-11-23', end: '2026-11-30', status: 'planned', kind: 'lift', description: '' }
 
 function fake(status: number, body: unknown) {
   const calls: { url: string; auth: string | null }[] = []
@@ -19,6 +19,14 @@ describe('exercise feed', () => {
     const events = await exerciseFeed(cfg, fn)('a@example.com', '2026-11-23', '2026-12-07')
     expect(events).toEqual([event])
     expect(calls).toEqual([{ url: 'http://feed.test/api/feed?email=a%40example.com&from=2026-11-23&to=2026-12-07', auth: 'Bearer k3y' }])
+  })
+
+  it('takes timed events with instants, and an event without allDay as all-day', async () => {
+    const timed = { ...event, id: 't', allDay: false, start: '2026-11-24T15:00:00.000Z', end: '2026-11-24T15:25:00.000Z', status: 'done' }
+    const { allDay: _, ...old } = event
+    const bad = { ...timed, id: 'bad', end: '2026-11-24' }
+    const events = await exerciseFeed(cfg, fake(200, { events: [timed, old, bad] }).fn)('a@example.com', '2026-11-23', '2026-12-07')
+    expect(events).toEqual([timed, event])
   })
 
   it('caches an answer for a minute', async () => {

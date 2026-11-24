@@ -113,11 +113,13 @@ A server-to-server JSON protocol, so any app can fill the Exercises calendar
 GET <EXERCISE_FEED_URL>?email=<planner user's email>&from=YYYY-MM-DD&to=YYYY-MM-DD
 Authorization: Bearer <EXERCISE_FEED_KEY>
 
-200 {"name": "Exercises", "events": [{"id", "title", "start", "end", "status", "kind", "description"}]}
+200 {"name": "Exercises", "events": [{"id", "title", "allDay", "start", "end", "status", "kind", "description"}]}
 404 the email is not known there (an empty calendar)
 ```
 
-Events are all-day: `start` is the first day and `end` the day after the last (exclusive).
+An all-day event has `start` the first day and `end` the day after the last (exclusive);
+otherwise both are ISO instants, as for a workout done through a timer. A missing `allDay`
+means all-day.
 `status` is `done` or `planned`; planned events of kind `lift` with the same days are
 merged into one bar. Malformed events are dropped, and answers are cached for a minute.
 

@@ -114,12 +114,14 @@ export type Report = {
 export type MonthSummary = { month: string; byProject: Record<number, number>; totalMinutes: number }
 
 /**
- * One event of an exercise feed (Rautaloki's GET /api/feed). Always all-day: start is the
- * first day and end the day after the last, both YYYY-MM-DD. Read-only in planner.
+ * One event of an exercise feed (Rautaloki's GET /api/feed), read-only in planner. All-day:
+ * start is the first day and end the day after the last, both YYYY-MM-DD. Timed (a workout
+ * done through a timer): both are ISO instants.
  */
 export type ExerciseEvent = {
   id: string
   title: string
+  allDay: boolean
   start: string
   end: string
   status: 'done' | 'planned'

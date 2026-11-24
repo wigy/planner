@@ -1193,7 +1193,7 @@ kbd {
 }
 
 /* Exercises from Rautaloki: done is solid green, still to do is a dashed outline. */
-.fc .fc-event.ev-ex,
+.fc .fc-daygrid-event.ev-ex,
 .ev-sample.ev-ex {
   border-radius: 999px;
 }
@@ -1212,7 +1212,7 @@ kbd {
   color: var(--p3);
   font-weight: 600;
 }
-.fc .fc-event.ev-ex .fc-event-main {
+.fc .fc-daygrid-event.ev-ex .fc-event-main {
   padding: 0 8px;
 }
 

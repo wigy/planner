@@ -111,7 +111,7 @@ export function CalendarView({ me }: { me: Me }) {
                 title: group.length > 1 ? `Lifting: ${group.map(liftName).join(' · ')}` : e.title,
                 start: e.start,
                 end: e.end,
-                allDay: true,
+                allDay: e.allDay,
                 editable: false,
                 classNames: ['ev-ex', e.status === 'planned' ? 'ev-ex-planned' : 'ev-ex-done'],
                 extendedProps: { exercises: group },
@@ -340,7 +340,7 @@ function groupExercises(events: ExerciseEvent[]): ExerciseEvent[][] {
   const weeks = new Map<string, ExerciseEvent[]>()
   const out: ExerciseEvent[][] = []
   for (const e of events) {
-    if (e.status !== 'planned' || e.kind !== 'lift') {
+    if (e.status !== 'planned' || e.kind !== 'lift' || !e.allDay) {
       out.push([e])
       continue
     }
@@ -365,11 +365,18 @@ function liftName(e: ExerciseEvent): string {
 /** Workouts from the exercise feed: read-only, so only what they are and when. */
 function ExerciseModal({ events, onClose }: { events: ExerciseEvent[]; onClose: () => void }) {
   const [first] = events
-  const last = new Date(`${first.end}T12:00:00`)
-  last.setDate(last.getDate() - 1)
   const day = (d: Date) => d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
-  const start = new Date(`${first.start}T12:00:00`)
-  const when = first.start === localDate(last) ? day(start) : `${day(start)} – ${day(last)}`
+  const time = (d: Date) => d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+  let when: string
+  if (first.allDay) {
+    const last = new Date(`${first.end}T12:00:00`)
+    last.setDate(last.getDate() - 1)
+    const start = new Date(`${first.start}T12:00:00`)
+    when = first.start === localDate(last) ? day(start) : `${day(start)} – ${day(last)}`
+  } else {
+    const start = new Date(first.start)
+    when = `${day(start)}, ${time(start)}–${time(new Date(first.end))}`
+  }
   const single = events.length === 1
   return (
     <Modal onClose={onClose}>
