@@ -57,13 +57,13 @@ the addresses in `PLANNER_ALLOWED_EMAILS` can log in.
 - Urgent cards (P1 and P2) grey out step by step after a month, three months and half a year
   without changes.
 - The colours follow the system's light or dark setting.
-- Bookkeeping events have a dark left edge, and the Bookkeeping calendar is listed apart
-  from the account calendars.
+- Bookkeeping events have a dark left edge. The Bookkeeping calendar and Exercises are listed
+  under *Special*, apart from the account calendars.
 - **Exercises**, when an exercise feed is configured: a read-only calendar of your workouts
   from [Rautaloki](https://github.com/wigy/rautaloki), fetched live and never stored. Done
   workouts are solid green on their day; the lifting still to do is one dashed bar per week,
-  this week and the weeks the running cycles have left. Its own section in the sidebar
-  switches it on and off (kept in the browser).
+  this week and the weeks the running cycles have left. Its entry under *Special* switches it
+  on and off (kept in the browser).
 - Keyboard: `b` `c` `p` `r` open the board, calendar, projects and reports; `n` adds a card to
   P1; with a card open, `1`–`4` move it to P1–P4 and `d` to Done; in the calendar `t` goes to
   today, `←` `→` move back and forward, and `m` `w` `d` pick month, week or day. `?` lists them.

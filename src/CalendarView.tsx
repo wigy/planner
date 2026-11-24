@@ -197,28 +197,25 @@ export function CalendarView({ me }: { me: Me }) {
             {cals.map(calItem)}
           </div>
         ))}
-        {calendars.some((c) => c.bookkeeping) && (
+        {(calendars.some((c) => c.bookkeeping) || me.exercisesConfigured) && (
           <div className="cal-group special">
-            <h2 className="side-head">Bookkeeping</h2>
+            <h2 className="side-head">Special</h2>
             {calendars.filter((c) => c.bookkeeping).map(calItem)}
-          </div>
-        )}
-        {me.exercisesConfigured && (
-          <div className="cal-group special">
-            <h2 className="side-head">Training</h2>
-            <label className="cal-item">
-              <input
-                type="checkbox"
-                checked={showExercises}
-                onChange={(e) => {
-                  localStorage.setItem('planner.exercises', e.target.checked ? '1' : '0')
-                  setShowExercises(e.target.checked)
-                }}
-              />
-              <span className="cal-dot ex-dot" />
-              <span className="cal-name">Exercises</span>
-              <span className="pill small">Rautaloki</span>
-            </label>
+            {me.exercisesConfigured && (
+              <label className="cal-item">
+                <input
+                  type="checkbox"
+                  checked={showExercises}
+                  onChange={(e) => {
+                    localStorage.setItem('planner.exercises', e.target.checked ? '1' : '0')
+                    setShowExercises(e.target.checked)
+                  }}
+                />
+                <span className="cal-dot ex-dot" />
+                <span className="cal-name">Exercises</span>
+                <span className="pill small">Rautaloki</span>
+              </label>
+            )}
           </div>
         )}
         <div className="legend">
