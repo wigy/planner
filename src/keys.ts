@@ -33,11 +33,14 @@ export function useKeys(handler: (key: string, e: KeyboardEvent) => boolean | vo
 }
 
 export const SHORTCUTS: [string, string][] = [
+  ['h', 'Today'],
   ['b', 'Board'],
   ['c', 'Calendar'],
   ['p', 'Projects'],
   ['r', 'Reports'],
   ['n', 'New card in P1 (on the board)'],
+  ['a', 'Another card to work on (on Today)'],
+  ['o', 'Open that card (on Today)'],
   ['1 – 4', 'Move the open card to P1 – P4'],
   ['d', 'Move the open card to Done'],
   ['t', 'Today (in the calendar)'],

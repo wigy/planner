@@ -8,14 +8,15 @@ import { CalendarView } from './CalendarView.tsx'
 import { Projects } from './Projects.tsx'
 import { Reports } from './Reports.tsx'
 import { Settings } from './Settings.tsx'
+import { Today } from './Today.tsx'
 import { localDate, onHoursChanged } from './hours.ts'
 import { SHORTCUTS, useKeys } from './keys.ts'
 import { Modal } from './Modal.tsx'
 
 function useHash(): string {
-  const [hash, setHash] = useState(location.hash.slice(1) || '/board')
+  const [hash, setHash] = useState(location.hash.slice(1) || '/today')
   useEffect(() => {
-    const on = () => setHash(location.hash.slice(1) || '/board')
+    const on = () => setHash(location.hash.slice(1) || '/today')
     addEventListener('hashchange', on)
     return () => removeEventListener('hashchange', on)
   }, [])
@@ -23,6 +24,7 @@ function useHash(): string {
 }
 
 const TABS = [
+  ['/today', 'Today'],
   ['/board', 'Board'],
   ['/calendar', 'Calendar'],
   ['/projects', 'Projects'],
@@ -146,7 +148,7 @@ export function App() {
 function Shell({ me, page, arg, setMe, reload }: { me: Me; page: string; arg: string | undefined; setMe: (m: Me | null) => void; reload: () => void }) {
   const [help, setHelp] = useState(false)
   useKeys((key) => {
-    const go: Record<string, string> = { b: '#/board', c: '#/calendar', p: '#/projects', r: '#/reports' }
+    const go: Record<string, string> = { h: '#/today', b: '#/board', c: '#/calendar', p: '#/projects', r: '#/reports' }
     if (go[key]) {
       location.hash = go[key]
       return true
@@ -190,6 +192,7 @@ function Shell({ me, page, arg, setMe, reload }: { me: Me; page: string; arg: st
         </div>
       )}
       <main className={`page-${page}`}>
+        {page === 'today' && <Today me={me} />}
         {page === 'board' && <Board me={me} ownerId={arg ? Number(arg) : me.id} />}
         {page === 'archive' && <Archive me={me} ownerId={arg ? Number(arg) : me.id} />}
         {page === 'calendar' && <CalendarView me={me} />}

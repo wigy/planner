@@ -232,7 +232,7 @@ function DraggableCard({ ticket, labelById, readOnly, onOpen }: { ticket: Ticket
   )
 }
 
-function Card({ ticket, labelById, overlay }: { ticket: Ticket; labelById: Map<number, Label>; overlay?: boolean }) {
+export function Card({ ticket, labelById, overlay }: { ticket: Ticket; labelById: Map<number, Label>; overlay?: boolean }) {
   return (
     <div
       className={`card card-${ticket.col} stale-${staleness(ticket).level} ${overlay ? 'overlay' : ''}`}

@@ -1562,3 +1562,178 @@ tr.current td {
 .ex-list li {
   margin: 8px 0;
 }
+
+/* ---- today: the entry page. Two sheets side by side: one card, and the training. */
+.today h1 {
+  margin: 4px 0 18px;
+}
+.today-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+.today-sheet {
+  background: var(--sheet);
+  border-radius: var(--r-sheet);
+  box-shadow: var(--lift);
+  padding: 16px 18px 14px;
+}
+.today-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.today-head h2 {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.col-name {
+  font-weight: 800;
+  color: var(--col);
+}
+.today .empty {
+  padding: 10px 0 14px;
+}
+
+/* The card to work on, set large on a column-coloured wash. */
+.focus-card {
+  display: block;
+  width: 100%;
+  padding: 14px;
+  border: none;
+  box-shadow: none;
+  text-align: left;
+  font-weight: inherit;
+  border-radius: var(--r-card);
+  background: color-mix(in srgb, var(--col, var(--p4)) 10%, var(--sheet));
+}
+.focus-card:hover {
+  background: color-mix(in srgb, var(--col, var(--p4)) 16%, var(--sheet));
+}
+.focus-card:active {
+  transform: none;
+}
+.focus-card .card {
+  padding: 14px 16px 15px 18px;
+  box-shadow:
+    0 6px 18px -8px color-mix(in srgb, var(--col) 45%, transparent),
+    var(--lift),
+    inset 4px 0 0 color-mix(in srgb, var(--col) 80%, transparent);
+}
+.focus-card .card .title {
+  font-size: 20px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+}
+.next-card:has(.card-p1) .focus-card {
+  --col: var(--p1);
+}
+.next-card:has(.card-p2) .focus-card {
+  --col: var(--p2);
+}
+.next-card:has(.card-p3) .focus-card {
+  --col: var(--p3);
+}
+.next-card .row {
+  margin: 10px 0 0;
+}
+.icon {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Training: done ticked in solid green, still to do as a dashed ring, as in the calendar. */
+.ex-week h3 {
+  margin: 14px 0 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--graphite);
+}
+.ex-week:first-of-type h3 {
+  margin-top: 0;
+}
+.ex-week ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.ex-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--frost-deep);
+}
+.ex-week li:last-child {
+  border-bottom: none;
+}
+.ex-mark {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  border: 1.5px dashed var(--p3);
+}
+.ex-done .ex-mark {
+  border: none;
+  background: #23704d;
+}
+.ex-mark svg {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: #fff;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.ex-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.ex-title {
+  font-weight: 600;
+  font-size: 14.5px;
+}
+.ex-done .ex-title {
+  color: var(--graphite);
+}
+.ex-desc {
+  font-size: 12.5px;
+  color: var(--graphite);
+}
+.ex-when {
+  flex: none;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--graphite);
+  white-space: nowrap;
+}
+.ex-when.now {
+  color: var(--on-pen);
+  background: var(--p3);
+  padding: 0 8px;
+  border-radius: 999px;
+}
+
+@media (max-width: 860px) {
+  .today-grid {
+    grid-template-columns: 1fr;
+  }
+}

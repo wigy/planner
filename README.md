@@ -59,13 +59,17 @@ the addresses in `PLANNER_ALLOWED_EMAILS` can log in.
 - The colours follow the system's light or dark setting.
 - Bookkeeping events have a dark left edge. The Bookkeeping calendar and Exercises are listed
   under *Special*, apart from the account calendars.
+- **Today** is the entry page: one card to work on, drawn at random from the most urgent
+  column that has any (*Another one* draws again from the same column), and, with an exercise
+  feed, the training of this week and the next: what is done this week, ticked, and what is
+  still to do.
 - **Exercises**, when an exercise feed is configured: a read-only calendar of your workouts
   from [Rautaloki](https://github.com/wigy/rautaloki), fetched live and never stored. Done
   workouts are solid green on their day; the lifting still to do is one dashed bar per week,
   this week and the weeks the running cycles have left. Its entry under *Special* switches it
   on and off (kept in the browser).
-- Keyboard: `b` `c` `p` `r` open the board, calendar, projects and reports; `n` adds a card to
-  P1; with a card open, `1`–`4` move it to P1–P4 and `d` to Done; in the calendar `t` goes to
+- Keyboard: `h` `b` `c` `p` `r` open Today, the board, calendar, projects and reports; `n` adds a card to
+  P1; on Today `a` draws another card and `o` opens it; with a card open, `1`–`4` move it to P1–P4 and `d` to Done; in the calendar `t` goes to
   today, `←` `→` move back and forward, and `m` `w` `d` pick month, week or day. `?` lists them.
 
 ## Running it
