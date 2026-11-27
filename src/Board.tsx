@@ -1,4 +1,4 @@
-import { DndContext, type DragEndEvent, DragOverlay, type DragStartEvent, PointerSensor, useDraggable, useDroppable, useSensor, useSensors } from '@dnd-kit/core'
+import { DndContext, type DragEndEvent, DragOverlay, type DragStartEvent, MouseSensor, TouchSensor, useDraggable, useDroppable, useSensor, useSensors } from '@dnd-kit/core'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { COLUMN_NAMES, COLUMNS, type Column, type Label, type Me, type Ticket } from '../shared/types.ts'
 import { api } from './api.ts'
@@ -43,7 +43,11 @@ export function Board({ me, ownerId }: { me: Me; ownerId: number }) {
   const [open, setOpen] = useState<number | null>(null)
   const [filter, setFilter] = useState<number | null>(null)
   const [dragging, setDragging] = useState<Ticket | null>(null)
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
+  // A mouse drags at once; a finger holds a moment first, so a swipe still scrolls the board.
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
+  )
 
   const load = useCallback(() => {
     Promise.all([api.get<Ticket[]>(`/api/users/${ownerId}/board`), api.get<Label[]>(`/api/users/${ownerId}/labels`)])
@@ -80,15 +84,14 @@ export function Board({ me, ownerId }: { me: Me; ownerId: number }) {
     if (!e.over) return
     const id = Number(String(e.active.id).slice(5))
     const overId = String(e.over.id)
-    let col: Column
-    let before: number | null = null
-    if (overId.startsWith('col:')) col = overId.slice(4) as Column
-    else {
-      const target = tickets.find((t) => t.id === Number(overId.slice(5)))
-      if (!target || target.id === id) return
-      col = target.col
-      before = target.id
-    }
+    if (overId.startsWith('col:')) return move(id, overId.slice(4) as Column, null)
+    const target = tickets.find((t) => t.id === Number(overId.slice(5)))
+    if (!target || target.id === id) return
+    return move(id, target.col, target.id)
+  }
+
+  /** Puts a card in a column, before another card or at the end. */
+  async function move(id: number, col: Column, before: number | null) {
     const list = byCol(col).filter((t) => t.id !== id)
     const idx = before === null ? list.length : list.findIndex((t) => t.id === before)
     const after = idx > 0 ? list[idx - 1].id : null
@@ -148,6 +151,7 @@ export function Board({ me, ownerId }: { me: Me; ownerId: number }) {
               labelById={labelById}
               readOnly={readOnly}
               onOpen={setOpen}
+              onMove={move}
               onAdd={async (title) => {
                 const t = await api.post<Ticket>('/api/tickets', { title, col })
                 setTickets((ts) => [...ts, t])
@@ -177,6 +181,7 @@ function ColumnView(props: {
   labelById: Map<number, Label>
   readOnly: boolean
   onOpen: (id: number) => void
+  onMove: (id: number, col: Column, before: number | null) => void
   onAdd: (title: string) => Promise<void>
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: `col:${props.col}`, disabled: props.readOnly })
@@ -193,7 +198,7 @@ function ColumnView(props: {
       {props.tickets.length === 0 && <p className="column-empty">{COLUMN_EMPTY[props.col]}</p>}
       <div className="cards">
         {props.tickets.map((t) => (
-          <DraggableCard key={t.id} ticket={t} labelById={props.labelById} readOnly={props.readOnly} onOpen={props.onOpen} />
+          <DraggableCard key={t.id} ticket={t} labelById={props.labelById} readOnly={props.readOnly} onOpen={props.onOpen} onMove={props.onMove} />
         ))}
       </div>
       {!props.readOnly && (
@@ -213,9 +218,17 @@ function ColumnView(props: {
   )
 }
 
-function DraggableCard({ ticket, labelById, readOnly, onOpen }: { ticket: Ticket; labelById: Map<number, Label>; readOnly: boolean; onOpen: (id: number) => void }) {
+function DraggableCard(props: {
+  ticket: Ticket
+  labelById: Map<number, Label>
+  readOnly: boolean
+  onOpen: (id: number) => void
+  onMove: (id: number, col: Column, before: number | null) => void
+}) {
+  const { ticket, labelById, readOnly, onOpen } = props
   const drag = useDraggable({ id: `card:${ticket.id}`, disabled: readOnly })
   const drop = useDroppable({ id: `card:${ticket.id}`, disabled: readOnly })
+  const next = COLUMNS[COLUMNS.indexOf(ticket.col) + 1]
   return (
     <div
       ref={(el) => {
@@ -228,6 +241,26 @@ function DraggableCard({ ticket, labelById, readOnly, onOpen }: { ticket: Ticket
       onClick={() => onOpen(ticket.id)}
     >
       <Card ticket={ticket} labelById={labelById} />
+      {!readOnly && next && (
+        // On a phone the next column is off screen, so a tap moves the card there instead of a long drag.
+        <button
+          type="button"
+          className="move-next"
+          aria-label={`Move to ${COLUMN_NAMES[next]}`}
+          title={`Move to ${COLUMN_NAMES[next]}`}
+          onPointerDown={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation()
+            props.onMove(ticket.id, next, null)
+          }}
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M4 8h8M8.5 4.5L12 8l-3.5 3.5" />
+          </svg>
+        </button>
+      )}
     </div>
   )
 }

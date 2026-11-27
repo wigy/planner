@@ -588,9 +588,51 @@ main {
   gap: 7px;
 }
 .drop-slot {
+  position: relative;
   border-top: 3px solid transparent;
   border-radius: var(--r-card);
-  touch-action: none;
+  /* Swipes scroll; a held touch starts a drag. */
+  touch-action: manipulation;
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+/* Move a card one column on, for fingers: the next column is off screen on a phone. */
+.move-next {
+  display: none;
+}
+@media (pointer: coarse) {
+  .drop-slot .card {
+    padding-right: 44px;
+  }
+  .move-next {
+    display: grid;
+    place-items: center;
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 40px;
+    padding: 0;
+    border: none;
+    border-left: 1px solid var(--hairline);
+    border-radius: 0 var(--r-card) var(--r-card) 0;
+    background: transparent;
+    box-shadow: none;
+    color: var(--pen);
+  }
+  .move-next svg {
+    width: 18px;
+    height: 18px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .move-next:active {
+    background: var(--pen-wash);
+    transform: none;
+  }
 }
 .drop-slot.over {
   border-top-color: var(--col);
